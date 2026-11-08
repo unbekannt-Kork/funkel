@@ -26,12 +26,12 @@ Unter [Releases](../../releases) liegen:
 Beim ersten Start lädt Funkel einmalig das Sprachmodell (574 MB). Danach läuft
 alles offline.
 
-**Mac:** Die App ist noch nicht bei Apple beglaubigt. Beim ersten Öffnen
+**Mac:** Die App ist nicht bei Apple beglaubigt (bewusst, kostet Geld). Beim ersten Öffnen
 deshalb Rechtsklick auf Funkel → *Öffnen* → *Öffnen*. Danach zwei Freigaben,
 beide nur einmal: *Bedienungshilfen* (damit Funkel die Taste sieht) und
 *Mikrofon*.
 
-**Windows:** Der Installer ist noch nicht signiert. Erscheint „Der Computer
+**Windows:** Der Installer ist nicht signiert (bewusst, kostet Geld). Erscheint „Der Computer
 wurde durch Windows geschützt“: *Weitere Informationen* → *Trotzdem ausführen*.
 
 ## Bedienen
