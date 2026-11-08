@@ -19,7 +19,9 @@ use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_autostart::MacosLauncher;
+#[cfg(not(target_os = "macos"))]
+use tauri_plugin_autostart::ManagerExt;
 
 use ablauf::Ablauf;
 use einstellungen::{protokoll, Einstellungen};
@@ -140,6 +142,42 @@ fn sprachmodell_laden(app: AppHandle) {
     });
 }
 
+/// Mac: eigener LaunchAgent mit KeepAlive — nach Absturz startet Funkel nach 10 s neu,
+/// „Funkel beenden“ im Menü (sauberes Ende) bleibt beendet.
+#[cfg(target_os = "macos")]
+fn autostart_setzen(_app: &AppHandle, an: bool) {
+    let ordner = dirs::home_dir().unwrap_or_default().join("Library/LaunchAgents");
+    let datei = ordner.join("de.theostudio.funkel.plist");
+    // Alten Eintrag des Autostart-Plugins ablösen, sonst starten zwei
+    let _ = std::fs::remove_file(ordner.join("Funkel.plist"));
+    if !an {
+        let _ = std::fs::remove_file(&datei);
+        return;
+    }
+    let Ok(programm) = std::env::current_exe() else { return };
+    let inhalt = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.theostudio.funkel</string>
+  <key>ProgramArguments</key><array><string>{}</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
+</dict>
+</plist>
+"#,
+        programm.display()
+    );
+    if std::fs::read_to_string(&datei).ok().as_deref() != Some(inhalt.as_str()) {
+        let _ = std::fs::create_dir_all(&ordner);
+        let _ = std::fs::write(&datei, inhalt);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
 fn autostart_setzen(app: &AppHandle, an: bool) {
     let start = app.autolaunch();
     let ist = start.is_enabled().unwrap_or(false);
@@ -193,6 +231,8 @@ fn menue_bauen(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Nur einmal: zwei Funkel hörten beide auf die Taste. Ein zweiter Start öffnet die Einstellungen.
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| einstellungen_zeigen(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -237,7 +277,12 @@ pub fn run() {
                     laeuft: ablauf.laeuft.clone(),
                 },
             );
-            protokoll(&format!("Start, Tastatur {}", if abgriff { "wird gelesen" } else { "ohne Freigabe" }));
+            let taste = aktuelle_taste(&werte);
+            protokoll(&format!(
+                "Start, Taste {} (Code {taste}), Tastatur {}",
+                plattform::tasten_name(taste),
+                if abgriff { "wird gelesen" } else { "ohne Freigabe" }
+            ));
 
             // Modell im Hintergrund laden, damit das erste Diktat nicht wartet
             if modell::vorhanden() {
