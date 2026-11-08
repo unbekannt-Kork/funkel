@@ -7,6 +7,7 @@ type Einstellungen = {
   sprache: string;
   autostart: boolean;
   aufbewahren_tage: number;
+  modus: string;
 };
 type Eintrag = { pfad: string; zeit: string; sekunden: number; text: string | null };
 type Status = {
@@ -14,6 +15,7 @@ type Status = {
   taste_name: string;
   freigabe: boolean;
   modell: boolean;
+  sprachmodell: boolean;
   woerterbuch: string;
   verlauf: Eintrag[];
 };
@@ -36,6 +38,13 @@ async function laden() {
   marke("modell-marke", s.modell);
   $("modell-text").textContent = s.modell ? "geladen, läuft offline" : "noch nicht geladen (einmalig, danach offline)";
   $("modell-knopf").hidden = s.modell;
+  marke("sprachmodell-marke", s.sprachmodell);
+  if ($("sprachmodell-fortschritt").hidden)
+    $("sprachmodell-text").textContent = s.sprachmodell
+      ? "Sprachmodell geladen: bereinigt, Mail, WhatsApp, Protokoll"
+      : "für alles außer wortgetreu: lokales Sprachmodell laden (einmalig)";
+  $("sprachmodell-knopf").hidden = s.sprachmodell;
+  $<HTMLSelectElement>("modus").value = werte.modus;
   $("taste-name").textContent = s.taste_name;
   $<HTMLInputElement>("einfuegen").checked = werte.einfuegen;
   $<HTMLSelectElement>("sprache").value = werte.sprache;
@@ -99,12 +108,29 @@ async function speichern() {
   werte.einfuegen = $<HTMLInputElement>("einfuegen").checked;
   werte.sprache = $<HTMLSelectElement>("sprache").value;
   werte.autostart = $<HTMLInputElement>("autostart").checked;
+  werte.modus = $<HTMLSelectElement>("modus").value;
   werte.aufbewahren_tage = Number($<HTMLSelectElement>("aufbewahren").value);
   await invoke("speichern", { einstellungen: werte });
 }
 
 $("ordner-knopf").addEventListener("click", () => invoke("ordner_oeffnen"));
-for (const id of ["einfuegen", "sprache", "autostart", "aufbewahren"]) $(id).addEventListener("change", speichern);
+$("sprachmodell-knopf").addEventListener("click", () => {
+  $<HTMLButtonElement>("sprachmodell-knopf").disabled = true;
+  $("sprachmodell-fortschritt").hidden = false;
+  invoke("sprachmodell_laden");
+});
+listen<{ geladen: number; gesamt: number }>("sprachmodell-fortschritt", ({ payload }) => {
+  const anteil = payload.gesamt ? payload.geladen / payload.gesamt : 0;
+  $("sprachmodell-balken").style.width = `${Math.round(anteil * 100)}%`;
+  $("sprachmodell-text").textContent = `${Math.round(payload.geladen / 1e6)} von ${Math.round(payload.gesamt / 1e6)} MB`;
+});
+listen<string | null>("sprachmodell-fertig", ({ payload: fehler }) => {
+  $("sprachmodell-fortschritt").hidden = true;
+  $<HTMLButtonElement>("sprachmodell-knopf").disabled = false;
+  if (fehler) $("sprachmodell-text").textContent = `Laden fehlgeschlagen: ${fehler}`;
+  else laden();
+});
+for (const id of ["einfuegen", "sprache", "autostart", "aufbewahren", "modus"]) $(id).addEventListener("change", speichern);
 $("woerterbuch").addEventListener("change", () =>
   invoke("woerterbuch_speichern", { text: $<HTMLTextAreaElement>("woerterbuch").value }),
 );

@@ -32,6 +32,13 @@
         </div>
         <button id="modell-knopf" hidden>Laden (574 MB)</button>
       </div>
+      <div class="zeile">
+        <span class="marke" id="sprachmodell-marke"></span>
+        <div class="text"><strong>Modi</strong><span class="leise" id="sprachmodell-text"></span>
+          <div class="fortschritt" id="sprachmodell-fortschritt" hidden><div id="sprachmodell-balken"></div></div>
+        </div>
+        <button id="sprachmodell-knopf" hidden>Laden (2,5 GB)</button>
+      </div>
     </section>
 
     <section>
@@ -45,6 +52,16 @@
 
     <section>
       <h2>Text</h2>
+      <label class="zeile">
+        <div class="text"><strong>Modus</strong><span class="leise">nach dem Diktat mit 1–5 umschaltbar</span></div>
+        <select id="modus">
+          <option value="wortgetreu">1 · Wortgetreu</option>
+          <option value="bereinigt">2 · Bereinigt</option>
+          <option value="mail">3 · Mail</option>
+          <option value="whatsapp">4 · WhatsApp</option>
+          <option value="protokoll">5 · Protokoll</option>
+        </select>
+      </label>
       <label class="zeile">
         <div class="text"><strong>Sofort einfügen</strong><span class="leise">sonst nur in der Zwischenablage</span></div>
         <input type="checkbox" id="einfuegen" />

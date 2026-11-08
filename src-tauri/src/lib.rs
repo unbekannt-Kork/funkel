@@ -6,7 +6,9 @@ mod aufnahme;
 mod ausloeser;
 mod einstellungen;
 mod erkennung;
+mod helfer;
 mod modell;
+mod modus;
 mod overlay;
 mod plattform;
 
@@ -28,6 +30,7 @@ struct Status {
     taste_name: String,
     freigabe: bool,
     modell: bool,
+    sprachmodell: bool,
     woerterbuch: String,
 }
 
@@ -46,6 +49,7 @@ fn status(ablauf: State<Arc<Ablauf>>) -> Status {
         taste_name: plattform::tasten_name(aktuelle_taste(&werte)),
         freigabe: plattform::freigabe() && plattform::abgriff_wach_halten(),
         modell: modell::vorhanden(),
+        sprachmodell: helfer::modell_vorhanden(),
         woerterbuch: einstellungen::woerterbuch(),
         einstellungen: werte,
     }
@@ -114,6 +118,20 @@ fn modell_laden(app: AppHandle, ablauf: State<Arc<Ablauf>>) {
             protokoll(&format!("Modell: {e}"));
         }
         let _ = app.emit("modell-fertig", ergebnis.err());
+    });
+}
+
+#[tauri::command]
+fn sprachmodell_laden(app: AppHandle) {
+    std::thread::spawn(move || {
+        let melder = app.clone();
+        let ergebnis = modell::laden(helfer::MODELL_QUELLE, &helfer::modell_pfad(), helfer::MODELL_MINDESTGROESSE, move |geladen, gesamt| {
+            let _ = melder.emit("sprachmodell-fortschritt", serde_json::json!({ "geladen": geladen, "gesamt": gesamt }));
+        });
+        if let Err(e) = &ergebnis {
+            protokoll(&format!("Sprachmodell: {e}"));
+        }
+        let _ = app.emit("sprachmodell-fertig", ergebnis.err());
     });
 }
 
@@ -196,6 +214,14 @@ pub fn run() {
                 werte.doppeltipp_ms,
                 ausloeser::Rueckrufe {
                     ausloesen: Box::new(move || ausloeser_ablauf.umschalten()),
+                    umwandeln: {
+                        let a = ablauf.clone();
+                        Box::new(move |n| {
+                            if let Some(m) = modus::Modus::aus_nummer(n) {
+                                a.umwandeln(m);
+                            }
+                        })
+                    },
                     gelernt: Box::new(move |code| {
                         let ablauf = lern_app.state::<Arc<Ablauf>>();
                         let mut w = ablauf.einstellungen.lock().unwrap();
@@ -245,7 +271,8 @@ pub fn run() {
             woerterbuch_speichern,
             freigabe_oeffnen,
             taste_lernen,
-            modell_laden
+            modell_laden,
+            sprachmodell_laden
         ])
         .build(tauri::generate_context!())
         .expect("Funkel startet nicht")

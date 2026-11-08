@@ -17,11 +17,13 @@ pub struct Einstellungen {
     pub doppeltipp_ms: u64,
     /// Ton und Text so viele Tage behalten (0 = für immer)
     pub aufbewahren_tage: u32,
+    /// Was aus dem Gesagten wird
+    pub modus: crate::modus::Modus,
 }
 
 impl Default for Einstellungen {
     fn default() -> Self {
-        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7 }
+        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default() }
     }
 }
 
@@ -63,8 +65,22 @@ pub fn woerterbuch_speichern(text: &str) -> Result<(), String> {
     fs::write(woerterbuch_datei(), text).map_err(|e| e.to_string())
 }
 
-/// Begriffe aus dem Wörterbuch als Vorlage für Whisper: so geschrieben, wie sie im Text stehen sollen.
-pub fn vorlage() -> String {
+/// Vorlage für Whisper: Begriffe aus dem Wörterbuch, dahinter Füllwörter,
+/// damit wortgetreu mitgeschrieben wird. Begriffe zuerst — Whisper nimmt nur
+/// etwa 224 Marken, der Rest fällt weg.
+pub fn vorlage(sprache: &str) -> String {
+    let mut teile = vec![begriffe()];
+    if sprache != "en" {
+        teile.push(crate::modus::STIL_DE.into());
+    }
+    if sprache != "de" {
+        teile.push(crate::modus::STIL_EN.into());
+    }
+    let text = teile.into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
+    text.chars().take(900).collect()
+}
+
+fn begriffe() -> String {
     let begriffe: Vec<String> = woerterbuch()
         .lines()
         .map(str::trim)

@@ -10,12 +10,15 @@ use tauri::{AppHandle, Emitter};
 use crate::aufnahme::{self, Aufnahme};
 use crate::einstellungen::{self, protokoll, Einstellungen};
 use crate::erkennung::Erkenner;
-use crate::{ablage, modell, overlay, plattform};
+use crate::modus::{self, Modus};
+use crate::{ablage, ausloeser, helfer, modell, overlay, plattform};
 
 /// Kürzer ist ein versehentlicher Doppeltipp, kein Diktat
 const MINDESTDAUER: Duration = Duration::from_millis(400);
 /// Leiser als das ist Stille (Effektivwert)
 const STILLE: f32 = 0.002;
+/// So lange nach „Fertig“ wählen die Ziffern 1–5 einen anderen Modus
+const WAHL: Duration = Duration::from_millis(4500);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Phase {
@@ -33,6 +36,8 @@ pub struct Ablauf {
     /// Für den Abgriff: läuft gerade eine Aufnahme? Dann beendet ein einzelner Tipp.
     pub laeuft: Arc<AtomicBool>,
     pub einstellungen: Mutex<Einstellungen>,
+    /// Letztes Diktat: Aufnahme und wortgetreuer Rohtext — Grundlage für das Umwandeln
+    letzte: Mutex<Option<(std::path::PathBuf, String)>>,
 }
 
 impl Ablauf {
@@ -45,6 +50,7 @@ impl Ablauf {
             erkenner: Arc::new(Erkenner::neu()),
             laeuft: Arc::new(AtomicBool::new(false)),
             einstellungen: Mutex::new(werte),
+            letzte: Mutex::new(None),
         })
     }
 
@@ -59,6 +65,7 @@ impl Ablauf {
     }
 
     fn starten(self: &Arc<Self>) {
+        ausloeser::wahl_schliessen();
         overlay::sicherstellen(&self.app);
         let feld = overlay::feld_fenster(&self.app);
         *self.feld.lock().unwrap() = feld.clone();
@@ -148,36 +155,83 @@ impl Ablauf {
         let app = self.app.clone();
         let feld_fortschritt = feld.clone();
         let beginn = Instant::now();
-        let ergebnis = self.erkenner.erkennen(&ton, &werte.sprache, &einstellungen::vorlage(), move |prozent| {
-            let anteil = prozent as f32 / 100.0;
+        // Whisper bis 90 % des Balkens, das Umformen den Rest
+        let anteil_whisper = if werte.modus.anweisung().is_some() { 0.9 } else { 1.0 };
+        let ergebnis = self.erkenner.erkennen(&ton, &werte.sprache, &einstellungen::vorlage(&werte.sprache), move |prozent| {
+            let anteil = prozent as f32 / 100.0 * anteil_whisper;
             overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
         });
         match ergebnis {
-            Ok(text) if text.is_empty() => {
+            Ok(roh) if roh.is_empty() => {
                 let _ = ablage::text_speichern(pfad, "");
                 self.fehler("Nichts erkannt")
             }
-            Ok(text) => {
-                if let Err(e) = ablage::text_speichern(pfad, &text) {
-                    protokoll(&format!("Text nicht gespeichert: {e}"));
-                }
+            Ok(roh) => {
                 protokoll(&format!("Erkannt: {sekunden:.1} s Ton in {:.1} s", beginn.elapsed().as_secs_f32()));
-                // Nur für Prüfläufe: FUNKEL_PROBE=/pfad schreibt den Text zusätzlich dorthin
-                if let Some(probe) = std::env::var_os("FUNKEL_PROBE") {
-                    let _ = std::fs::write(probe, &text);
-                }
-                if let Err(e) = arboard::Clipboard::new().and_then(|mut c| c.set_text(text)) {
-                    return self.fehler(&format!("Zwischenablage: {e}"));
-                }
-                if werte.einfuegen {
-                    std::thread::sleep(Duration::from_millis(80));
-                    plattform::einfuegen();
-                }
-                overlay::senden(&self.app, &feld, |f| json!({ "phase": "fertig", "feld": f }));
-                self.zurueck();
+                let _ = ablage::roh_speichern(pfad, &roh);
+                *self.letzte.lock().unwrap() = Some((pfad.to_path_buf(), roh.clone()));
+                self.abliefern(pfad, &roh, werte.modus, werte.einfuegen, &feld);
             }
             Err(e) => self.fehler(&e),
         }
+    }
+
+    /// Rohtext im Modus umformen, ablegen, in die Zwischenablage, Fertig zeigen.
+    fn abliefern(&self, pfad: &std::path::Path, roh: &str, modus: Modus, einfuegen: bool, feld: &str) {
+        let text = match modus.anweisung() {
+            None => roh.to_string(),
+            Some(anweisung) => {
+                overlay::senden(&self.app, feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.92 }));
+                let beginn = Instant::now();
+                match helfer::umformen(&anweisung, roh) {
+                    Ok(t) if !t.is_empty() => {
+                        protokoll(&format!("{} in {:.1} s", modus.name(), beginn.elapsed().as_secs_f32()));
+                        modus::nachputzen(&t)
+                    }
+                    Ok(_) => roh.to_string(),
+                    Err(e) => {
+                        // Lieber den Rohtext als nichts
+                        protokoll(&format!("{}: {e} — Rohtext geliefert", modus.name()));
+                        roh.to_string()
+                    }
+                }
+            }
+        };
+        if let Err(e) = ablage::text_speichern(pfad, &text) {
+            protokoll(&format!("Text nicht gespeichert: {e}"));
+        }
+        // Nur für Prüfläufe: FUNKEL_PROBE=/pfad schreibt den Text zusätzlich dorthin
+        if let Some(probe) = std::env::var_os("FUNKEL_PROBE") {
+            let _ = std::fs::write(probe, &text);
+        }
+        if let Err(e) = arboard::Clipboard::new().and_then(|mut c| c.set_text(text)) {
+            return self.fehler(&format!("Zwischenablage: {e}"));
+        }
+        if einfuegen {
+            std::thread::sleep(Duration::from_millis(80));
+            plattform::einfuegen();
+        }
+        let namen: Vec<&str> = modus::ALLE.iter().map(|m| m.name()).collect();
+        let aktiv = modus::ALLE.iter().position(|m| *m == modus).unwrap_or(0);
+        overlay::senden(&self.app, feld, |f| json!({ "phase": "fertig", "feld": f, "modi": namen, "aktiv": aktiv }));
+        ausloeser::wahl_oeffnen(WAHL);
+        self.zurueck();
+    }
+
+    /// Schnellwahl oder Menü: das letzte Diktat in einem anderen Modus.
+    pub fn umwandeln(self: &Arc<Self>, modus: Modus) {
+        let Some((pfad, roh)) = self.letzte.lock().unwrap().clone() else { return };
+        {
+            let mut phase = self.phase.lock().unwrap();
+            if *phase != Phase::Bereit {
+                return;
+            }
+            *phase = Phase::Erkennt;
+        }
+        let feld = self.feld.lock().unwrap().clone();
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.5 }));
+        // Schon eingefügter Text würde doppelt stehen: umgewandelt nur in die Zwischenablage
+        self.abliefern(&pfad, &roh, modus, false, &feld);
     }
 
     /// Die gerade laufende Aufnahme — sie ist kein Absturz.

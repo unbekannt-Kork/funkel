@@ -38,4 +38,4 @@ kbd { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3p
 select, textarea { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--linie); background: var(--grund); color: var(--text); }
 textarea { resize: vertical; }
 .fortschritt { height: 4px; border-radius: 3px; background: var(--linie); margin-top: 6px; overflow: hidden; }
-#modell-balken { height: 100%; width: 0; background: var(--akzent); transition: width 0.2s linear; }
+#modell-balken, #sprachmodell-balken { height: 100%; width: 0; background: var(--akzent); transition: width 0.2s linear; }

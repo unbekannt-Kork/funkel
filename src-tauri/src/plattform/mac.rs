@@ -207,6 +207,18 @@ pub fn standard_taste() -> u32 {
     if unsafe { KBGetLayoutType(LMGetKbdType() as i16) } == ISO { 10 } else { 50 }
 }
 
+/// Ziffern 1–5 der oberen Reihe (für die Schnellwahl der Modi)
+pub fn ziffer(code: u32) -> Option<u8> {
+    match code {
+        18 => Some(1),
+        19 => Some(2),
+        20 => Some(3),
+        21 => Some(4),
+        23 => Some(5),
+        _ => None,
+    }
+}
+
 pub fn tasten_name(code: u32) -> String {
     let name = match code {
         10 => "^",

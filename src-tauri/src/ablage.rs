@@ -92,6 +92,11 @@ fn sekunden(pfad: &Path) -> u32 {
 
 // -- Text und Verlauf ----------------------------------------------------------
 
+/// Wortgetreuer Rohtext neben dem Ergebnis: daraus entstehen alle Modi.
+pub fn roh_speichern(wav: &Path, text: &str) -> std::io::Result<()> {
+    fs::write(wav.with_extension("roh.txt"), text)
+}
+
 pub fn text_speichern(wav: &Path, text: &str) -> std::io::Result<()> {
     fs::write(text_pfad(wav), text)
 }
@@ -135,6 +140,7 @@ pub fn aufraeumen(tage: u32) -> usize {
         let p = PathBuf::from(&e.pfad);
         if zeit_von(&p).is_some_and(|z| z < grenze) {
             let _ = fs::remove_file(text_pfad(&p));
+            let _ = fs::remove_file(p.with_extension("roh.txt"));
             if fs::remove_file(&p).is_ok() {
                 weg += 1;
             }

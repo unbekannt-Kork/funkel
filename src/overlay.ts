@@ -5,7 +5,7 @@ type Zustand =
   | { phase: "hoert"; feld: boolean }
   | { phase: "pegel"; wert: number }
   | { phase: "erkennt"; feld: boolean; anteil: number }
-  | { phase: "fertig"; feld: boolean }
+  | { phase: "fertig"; feld: boolean; modi: string[]; aktiv: number }
   | { phase: "aus" }
   | { phase: "fehler"; feld: boolean; text: string };
 
@@ -18,12 +18,15 @@ const GRUEN_MINDESTENS_MS = 900; // die Erkennung ist oft schneller — so lange
 const BLUETE_MS = 500;
 const FERTIG_STEHT_MS = 2500;
 const FEHLER_STEHT_MS = 5000;
+const WAHL_AB_MS = 900; // erst „✓ Fertig“ lesen lassen, dann die Modi zeigen
+const WAHL_MS = 3600; // passt zu WAHL im Rust-Ablauf (4,5 s ab Fertig)
 
 const rand = document.getElementById("rand")!;
 const feld = document.getElementById("feld")!;
 const uhr = document.getElementById("uhr")!;
 const balken = document.getElementById("balken")!;
 const satz = document.getElementById("satz")!;
+const wahl = document.getElementById("wahl")!;
 
 const baender: Record<Stufe, HTMLDivElement> = {} as never;
 const warme: HTMLDivElement[] = [];
@@ -124,15 +127,33 @@ function erkennt(mitFeld: boolean, anteil: number) {
     rand.className = "an erkennt";
     zeigeStufe("breit");
     if (mitFeld) {
-      feld.classList.remove("hoert");
-      feld.classList.add("an", "erkennt");
-      spaeter(420, () => feld.classList.add("balken-da"));
+      if (feld.classList.contains("hoert")) {
+        feld.classList.remove("hoert");
+        feld.classList.add("an", "erkennt");
+        spaeter(420, () => feld.classList.add("balken-da"));
+      } else {
+        // Umwandeln aus der Schnellwahl: gleich wieder der Balken
+        feldSetzen("an", "erkennt", "balken-da");
+      }
     }
   }
   if (mitFeld) balken.style.width = `${Math.round(Math.max(0, Math.min(1, anteil)) * 100)}%`;
 }
 
-function fertig(mitFeld: boolean) {
+function wahlZeigen(modi: string[], aktiv: number) {
+  wahl.replaceChildren(
+    ...modi.map((name, i) => {
+      const k = document.createElement("span");
+      k.className = "wahl-knopf" + (i === aktiv ? " aktiv" : "");
+      const taste = document.createElement("kbd");
+      taste.textContent = String(i + 1);
+      k.append(taste, name);
+      return k;
+    }),
+  );
+}
+
+function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
   const warten = Math.max(0, GRUEN_MINDESTENS_MS - (Date.now() - erkenntSeit));
   alleAbbrechen();
   spaeter(warten, () => {
@@ -145,7 +166,13 @@ function fertig(mitFeld: boolean) {
     feld.classList.add("an", "fertig");
     balken.style.width = "100%";
     spaeter(180, () => feld.classList.add("zusammen"));
-    spaeter(FERTIG_STEHT_MS, () => feld.classList.replace("an", "weg"));
+    if (modi.length) {
+      wahlZeigen(modi, aktiv);
+      spaeter(WAHL_AB_MS, () => feld.classList.add("wahl"));
+      spaeter(WAHL_AB_MS + WAHL_MS, () => feld.classList.replace("an", "weg"));
+    } else {
+      spaeter(FERTIG_STEHT_MS, () => feld.classList.replace("an", "weg"));
+    }
   });
 }
 
@@ -175,7 +202,7 @@ getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: z }) => {
     case "hoert": return hoert(z.feld);
     case "pegel": return warme.forEach((w) => (w.style.opacity = String(z.wert)));
     case "erkennt": return erkennt(z.feld, z.anteil);
-    case "fertig": return fertig(z.feld);
+    case "fertig": return fertig(z.feld, z.modi, z.aktiv);
     case "aus": return aus();
     case "fehler": return fehler(z.feld, z.text);
   }

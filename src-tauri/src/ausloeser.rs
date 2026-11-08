@@ -73,12 +73,24 @@ struct Abgriff {
 
 pub struct Rueckrufe {
     pub ausloesen: Box<dyn Fn() + Send + Sync>,
+    /// Ziffer 1–5 während der Schnellwahl nach einem Diktat
+    pub umwandeln: Box<dyn Fn(u8) + Send + Sync>,
     pub gelernt: Box<dyn Fn(u32) + Send + Sync>,
     pub laeuft: Arc<AtomicBool>,
 }
 
 static ABGRIFF: OnceLock<Mutex<Abgriff>> = OnceLock::new();
 static RUECKRUFE: OnceLock<Rueckrufe> = OnceLock::new();
+/// Bis wann Ziffern 1–5 einen Modus wählen statt getippt zu werden
+static WAHL_BIS: Mutex<Option<Instant>> = Mutex::new(None);
+
+pub fn wahl_oeffnen(dauer: Duration) {
+    *WAHL_BIS.lock().unwrap() = Some(Instant::now() + dauer);
+}
+
+pub fn wahl_schliessen() {
+    *WAHL_BIS.lock().unwrap() = None;
+}
 
 /// Hängt den Abgriff an. `false` = keine Freigabe (Mac: Bedienungshilfen).
 pub fn starten(taste: u32, fenster_ms: u64, rueckrufe: Rueckrufe) -> bool {
@@ -107,6 +119,19 @@ pub fn lernen() {
 /// wartet mit jedem Anschlag darauf. Rückgabe `true` = Anschlag verschlucken.
 fn taste_gedrueckt(code: u32, mit_zusatztaste: bool, gehalten: bool) -> bool {
     let (Some(abgriff), Some(rueck)) = (ABGRIFF.get(), RUECKRUFE.get()) else { return false };
+    // Schnellwahl: nur unmittelbar nach einem Diktat, jede andere Taste beendet sie
+    {
+        let mut wahl = WAHL_BIS.lock().unwrap();
+        if wahl.is_some_and(|bis| Instant::now() < bis) && !gehalten {
+            *wahl = None;
+            if let (false, Some(n)) = (mit_zusatztaste, plattform::ziffer(code)) {
+                std::thread::spawn(move || (RUECKRUFE.get().unwrap().umwandeln)(n));
+                return true;
+            }
+        } else {
+            *wahl = None;
+        }
+    }
     let mut a = abgriff.lock().unwrap();
     if a.lernen {
         if mit_zusatztaste {
