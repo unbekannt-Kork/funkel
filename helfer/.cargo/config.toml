@@ -2,3 +2,7 @@
 # sonst scheitert das Linken (LNK2038 RuntimeLibrary MD vs MT).
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+# llama-cpp-sys-2 folgt crt-static nicht von selbst
+LLAMA_STATIC_CRT = "1"
