@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Funkel</title>
+    <link rel="stylesheet" href="/src/einstellungen.css" />
+    <script type="module" src="/src/einstellungen.ts"></script>
+  </head>
+  <body>
+    <header>
+      <h1>Funkel</h1>
+      <p class="leise">Zweimal die Taste tippen, sprechen, einmal tippen. Der Text liegt in der Zwischenablage. Alles bleibt auf diesem Rechner.</p>
+    </header>
+
+    <section>
+      <h2>Bereit?</h2>
+      <div class="zeile" id="zeile-freigabe">
+        <span class="marke" id="freigabe-marke"></span>
+        <div class="text"><strong>Tastatur</strong><span class="leise" id="freigabe-text"></span></div>
+        <button id="freigabe-knopf" hidden>Freigabe öffnen</button>
+      </div>
+      <div class="zeile">
+        <span class="marke" id="modell-marke"></span>
+        <div class="text"><strong>Sprachmodell</strong><span class="leise" id="modell-text"></span>
+          <div class="fortschritt" id="modell-fortschritt" hidden><div id="modell-balken"></div></div>
+        </div>
+        <button id="modell-knopf" hidden>Laden (574 MB)</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Auslöser</h2>
+      <div class="zeile">
+        <div class="text"><strong>Taste</strong><span class="leise">zweimal tippen startet, einmal beendet</span></div>
+        <kbd id="taste-name">^</kbd>
+        <button id="taste-knopf">Andere Taste</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Text</h2>
+      <label class="zeile">
+        <div class="text"><strong>Sofort einfügen</strong><span class="leise">sonst nur in der Zwischenablage</span></div>
+        <input type="checkbox" id="einfuegen" />
+      </label>
+      <label class="zeile">
+        <div class="text"><strong>Sprache</strong></div>
+        <select id="sprache">
+          <option value="auto">automatisch</option>
+          <option value="de">Deutsch</option>
+          <option value="en">Englisch</option>
+        </select>
+      </label>
+      <div class="zeile spalte">
+        <div class="text"><strong>Wörterbuch</strong><span class="leise">ein Begriff je Zeile, so geschrieben, wie er im Text stehen soll</span></div>
+        <textarea id="woerterbuch" rows="4" spellcheck="false" placeholder="Supabase&#10;Tauri"></textarea>
+      </div>
+    </section>
+
+    <section>
+      <h2>Start</h2>
+      <label class="zeile">
+        <div class="text"><strong>Mit dem Rechner starten</strong></div>
+        <input type="checkbox" id="autostart" />
+      </label>
+    </section>
+  </body>
+</html>

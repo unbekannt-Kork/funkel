@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Rand je Bildschirm und Einstellungsfenster: nur Ereignisse und eigene Befehle",
+  "windows": ["rand-*", "einstellungen"],
+  "permissions": ["core:default"]
+}

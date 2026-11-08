@@ -1,0 +1,39 @@
+name: Veröffentlichen
+# Ein Tag wie v0.1.0 baut .dmg (Apple-Chip) und Windows-Installer und legt sie als Entwurf in die Releases.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  bauen:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: "--bundles dmg"
+          - os: windows-latest
+            args: "--bundles nsis,msi"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Funkel ${{ github.ref_name }}"
+          releaseDraft: true
+          args: ${{ matrix.args }}
