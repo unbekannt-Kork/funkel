@@ -14,4 +14,4 @@
 | 08.11.2026 | Windows: Taste über Scancode 0x29 | die Taste unter Escape, unabhängig vom Layout (`^` oder `` ` ``) |
 | 08.11.2026 | Kein Textverlauf, Ton nie auf Platte | Datensparsamkeit (Art. 5 Abs. 1 lit. c DSGVO) |
 | 08.11.2026 | MIT-Lizenz, Repo öffentlich | so gewünscht; Whisper und whisper.cpp stehen ebenfalls unter MIT |
-| 08.11.2026 | Noch ohne Signatur (Apple, Windows) | kostet Geld (Apple 99 USD/Jahr), Entscheidung steht aus; bis dahin Hinweis im README |
+| 08.11.2026 | Keine Signatur (Apple, Windows) | Entscheidung Louis: kein Geld dafür; der erste Start braucht deshalb einen Handgriff, beschrieben im README |
