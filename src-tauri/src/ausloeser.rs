@@ -103,6 +103,11 @@ pub fn starten(taste: u32, fenster_ms: u64, rueckrufe: Rueckrufe) -> bool {
     plattform::abgriff_starten(taste_gedrueckt)
 }
 
+/// Erneut anhängen, z. B. nachdem die Freigabe erst nach dem Start erteilt wurde.
+pub fn neu_anhaengen() -> bool {
+    ABGRIFF.get().is_some() && plattform::abgriff_starten(taste_gedrueckt)
+}
+
 pub fn taste_setzen(taste: u32) {
     if let Some(a) = ABGRIFF.get() {
         a.lock().unwrap().taste = taste;

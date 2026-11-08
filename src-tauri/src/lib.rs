@@ -261,7 +261,11 @@ pub fn run() {
             let waechter = handle.clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                plattform::abgriff_wach_halten();
+                // Freigabe erst nach dem Start erteilt: jetzt anhängen, ohne Neustart
+                if !plattform::abgriff_wach_halten() && plattform::freigabe() && ausloeser::neu_anhaengen() {
+                    protokoll("Freigabe erteilt, Tastatur wird gelesen");
+                    let _ = waechter.emit("status-geaendert", ());
+                }
                 let w = waechter.clone();
                 let _ = waechter.run_on_main_thread(move || overlay::sicherstellen(&w));
             });
