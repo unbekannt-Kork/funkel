@@ -30,4 +30,4 @@
 | 08.11.2026 | Anzeige wählbar: Rahmen und Feld (Standard), nur Rahmen, nur Feld | Louis: „umschalten können … aber die Kombination, wie wir es jetzt haben, finde ich für mich gut“ |
 | 08.11.2026 | Modus-Auswahl im Stil des „Hört zu“-Felds, aktiver Modus mit grünem Punkt | ein Design statt zweier |
 | 08.11.2026 | Eigenes Signier-Zertifikat „Funkel Lokal“ plus Mikrofon-Berechtigung (audio-input) | Freigaben bleiben über Updates; die gehärtete Laufzeit liefert ohne Berechtigung nur Stille |
-
+| 08.11.2026 | Windows vorerst ohne Sprechertrennung | sherpa-onnx statisch (/MT) und llama.cpp (/MD) linken dort nicht zusammen; dreimal versucht, abgegrenzt; Protokoll läuft dort ohne Sprecher. Offen |

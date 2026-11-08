@@ -42,8 +42,14 @@ struct Auftrag {
     schwelle: f32,
 }
 
+#[cfg(windows)]
+fn sprecher(_: &Auftrag) -> Result<serde_json::Value, String> {
+    Err("Sprechertrennung gibt es auf Windows noch nicht".into())
+}
+
 /// Wer spricht wann. Werte wie im Vorgänger erprobt: Schwelle 0,55, kleiner = mehr Personen.
 /// Direkt über sherpa-onnx, damit beide Modelle alle Rechenkerne nutzen.
+#[cfg(not(windows))]
 fn sprecher(a: &Auftrag) -> Result<serde_json::Value, String> {
     use sherpa_rs_sys as s;
     use std::ffi::CString;
