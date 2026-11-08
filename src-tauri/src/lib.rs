@@ -125,8 +125,12 @@ fn modell_laden(app: AppHandle, ablauf: State<Arc<Ablauf>>) {
 fn sprachmodell_laden(app: AppHandle) {
     std::thread::spawn(move || {
         let melder = app.clone();
-        let ergebnis = modell::laden(helfer::MODELL_QUELLE, &helfer::modell_pfad(), helfer::MODELL_MINDESTGROESSE, move |geladen, gesamt| {
-            let _ = melder.emit("sprachmodell-fortschritt", serde_json::json!({ "geladen": geladen, "gesamt": gesamt }));
+        // Nacheinander; der Balken zeigt das größte (Sprachmodell), die kleinen laufen schnell durch
+        let ergebnis = helfer::fehlende_modelle().into_iter().try_for_each(|(quelle, ziel, mindest)| {
+            let melder = melder.clone();
+            modell::laden(quelle, &ziel, mindest, move |geladen, gesamt| {
+                let _ = melder.emit("sprachmodell-fortschritt", serde_json::json!({ "geladen": geladen, "gesamt": gesamt }));
+            })
         });
         if let Err(e) = &ergebnis {
             protokoll(&format!("Sprachmodell: {e}"));

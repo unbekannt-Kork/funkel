@@ -3,6 +3,10 @@
 //!
 //!   {"modell": "/pfad/modell.gguf", "anweisung": "…", "text": "…"}
 //!   → {"text": "…"}  oder  {"fehler": "…"}
+//!
+//!   {"aufgabe": "sprecher", "wav": "/pfad.wav", "segmentierung": "…onnx", "stimmen": "…onnx",
+//!    "anzahl": 0, "schwelle": 0.55}
+//!   → {"abschnitte": [{"von": 0.0, "bis": 3.2, "sprecher": 0}, …]}
 use std::io::{BufRead, Write};
 use std::num::NonZeroU32;
 
@@ -17,9 +21,74 @@ use serde_json::json;
 
 #[derive(Deserialize)]
 struct Auftrag {
+    #[serde(default)]
+    aufgabe: String,
+    #[serde(default)]
     modell: String,
+    #[serde(default)]
     anweisung: String,
+    #[serde(default)]
     text: String,
+    #[serde(default)]
+    wav: String,
+    #[serde(default)]
+    segmentierung: String,
+    #[serde(default)]
+    stimmen: String,
+    /// 0 = selbst erkennen
+    #[serde(default)]
+    anzahl: i32,
+    #[serde(default)]
+    schwelle: f32,
+}
+
+/// Wer spricht wann. Werte wie im Vorgänger erprobt: Schwelle 0,55, kleiner = mehr Personen.
+/// Direkt über sherpa-onnx, damit beide Modelle alle Rechenkerne nutzen.
+fn sprecher(a: &Auftrag) -> Result<serde_json::Value, String> {
+    use sherpa_rs_sys as s;
+    use std::ffi::CString;
+    let roh = std::fs::read(&a.wav).map_err(|e| e.to_string())?;
+    let start = roh.windows(4).position(|w| w == b"data").map(|p| p + 8).unwrap_or(roh.len());
+    let (paare, _) = roh[start..].as_chunks::<2>();
+    let mut ton: Vec<f32> = paare.iter().map(|b| i16::from_le_bytes(*b) as f32 / 32768.0).collect();
+    let kerne = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8) as i32;
+    let cpu = CString::new("cpu").unwrap();
+    let stimmen = CString::new(a.stimmen.as_str()).map_err(|e| e.to_string())?;
+    let segmentierung = CString::new(a.segmentierung.as_str()).map_err(|e| e.to_string())?;
+    let einstellung = s::SherpaOnnxOfflineSpeakerDiarizationConfig {
+        embedding: s::SherpaOnnxSpeakerEmbeddingExtractorConfig { model: stimmen.as_ptr(), num_threads: kerne, debug: 0, provider: cpu.as_ptr() },
+        clustering: s::SherpaOnnxFastClusteringConfig {
+            num_clusters: if a.anzahl > 0 { a.anzahl } else { -1 },
+            threshold: if a.schwelle > 0.0 { a.schwelle } else { 0.55 },
+        },
+        min_duration_off: 0.5,
+        min_duration_on: 0.3,
+        segmentation: s::SherpaOnnxOfflineSpeakerSegmentationModelConfig {
+            pyannote: s::SherpaOnnxOfflineSpeakerSegmentationPyannoteModelConfig { model: segmentierung.as_ptr() },
+            num_threads: kerne,
+            debug: 0,
+            provider: cpu.as_ptr(),
+        },
+    };
+    let mut abschnitte = Vec::new();
+    unsafe {
+        let trenner = s::SherpaOnnxCreateOfflineSpeakerDiarization(&einstellung);
+        if trenner.is_null() {
+            return Err("Sprechertrennung lässt sich nicht einrichten".into());
+        }
+        let ergebnis = s::SherpaOnnxOfflineSpeakerDiarizationProcessWithCallback(trenner, ton.as_mut_ptr(), ton.len() as i32, None, std::ptr::null_mut());
+        let anzahl = s::SherpaOnnxOfflineSpeakerDiarizationResultGetNumSegments(ergebnis);
+        let zeiger = s::SherpaOnnxOfflineSpeakerDiarizationResultSortByStartTime(ergebnis);
+        if !zeiger.is_null() && anzahl > 0 {
+            for seg in std::slice::from_raw_parts(zeiger, anzahl as usize) {
+                abschnitte.push(json!({ "von": seg.start, "bis": seg.end, "sprecher": seg.speaker }));
+            }
+            s::SherpaOnnxOfflineSpeakerDiarizationDestroySegment(zeiger);
+        }
+        s::SherpaOnnxOfflineSpeakerDiarizationDestroyResult(ergebnis);
+        s::SherpaOnnxDestroyOfflineSpeakerDiarization(trenner);
+    }
+    Ok(json!({ "abschnitte": abschnitte }))
 }
 
 const KONTEXT: u32 = 16_384;
@@ -85,6 +154,7 @@ fn main() {
         }
         let antwort = match serde_json::from_str::<Auftrag>(&zeile) {
             Err(e) => json!({ "fehler": format!("Auftrag: {e}") }),
+            Ok(a) if a.aufgabe == "sprecher" => sprecher(&a).unwrap_or_else(|e| json!({ "fehler": e })),
             Ok(a) => {
                 if geladen.as_ref().map(|(p, _)| p != &a.modell).unwrap_or(true) {
                     let param = LlamaModelParams::default().with_n_gpu_layers(1000);

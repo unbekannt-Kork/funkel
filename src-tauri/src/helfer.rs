@@ -18,8 +18,34 @@ pub fn modell_pfad() -> PathBuf {
     daten_ordner().join("modelle").join(MODELL_NAME)
 }
 
+/// Sprechertrennung (sherpa-onnx): Segmentierung (pyannote 3.0) und Stimmabdruck (3D-Speaker)
+pub const SEGMENTIERUNG: (&str, &str, u64) = (
+    "segmentierung-pyannote-3.0.onnx",
+    "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.onnx",
+    5_000_000,
+);
+pub const STIMMEN: (&str, &str, u64) = (
+    "stimmen-3dspeaker.onnx",
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx",
+    60_000_000,
+);
+
+fn vorhanden(name: &str, mindest: u64) -> bool {
+    std::fs::metadata(daten_ordner().join("modelle").join(name)).map(|m| m.len() >= mindest).unwrap_or(false)
+}
+
+/// Alles, was die Modi brauchen: Sprachmodell und beide Modelle der Sprechertrennung
 pub fn modell_vorhanden() -> bool {
-    std::fs::metadata(modell_pfad()).map(|m| m.len() >= MODELL_MINDESTGROESSE).unwrap_or(false)
+    vorhanden(MODELL_NAME, MODELL_MINDESTGROESSE) && vorhanden(SEGMENTIERUNG.0, SEGMENTIERUNG.2) && vorhanden(STIMMEN.0, STIMMEN.2)
+}
+
+/// Was noch zu laden ist: (Quelle, Ziel, Mindestgröße)
+pub fn fehlende_modelle() -> Vec<(&'static str, PathBuf, u64)> {
+    [(MODELL_NAME, MODELL_QUELLE, MODELL_MINDESTGROESSE), SEGMENTIERUNG, STIMMEN]
+        .into_iter()
+        .filter(|(name, _, mindest)| !vorhanden(name, *mindest))
+        .map(|(name, quelle, mindest)| (quelle, daten_ordner().join("modelle").join(name), mindest))
+        .collect()
 }
 
 /// Neben dem Programm (im App-Bündel), sonst aus dem Entwicklungsordner.
@@ -60,13 +86,32 @@ pub fn umformen(anweisung: &str, text: &str) -> Result<String, String> {
     if !modell_vorhanden() {
         return Err("Sprachmodell für die Modi fehlt — in den Einstellungen laden".into());
     }
+    let antwort = fragen(json!({ "modell": modell_pfad(), "anweisung": anweisung, "text": text }))?;
+    antwort["text"].as_str().map(String::from).ok_or_else(|| "keine Antwort".into())
+}
+
+/// Wer spricht wann: (von, bis, Nummer ab 0). `anzahl` 0 = selbst erkennen.
+pub fn sprecher(wav: &std::path::Path, anzahl: i32) -> Result<Vec<(f32, f32, i32)>, String> {
+    let modelle = daten_ordner().join("modelle");
+    let antwort = fragen(json!({
+        "aufgabe": "sprecher", "wav": wav, "anzahl": anzahl,
+        "segmentierung": modelle.join(SEGMENTIERUNG.0), "stimmen": modelle.join(STIMMEN.0),
+    }))?;
+    Ok(antwort["abschnitte"]
+        .as_array()
+        .ok_or("keine Abschnitte")?
+        .iter()
+        .map(|a| (a["von"].as_f64().unwrap_or(0.0) as f32, a["bis"].as_f64().unwrap_or(0.0) as f32, a["sprecher"].as_i64().unwrap_or(0) as i32))
+        .collect())
+}
+
+fn fragen(auftrag: Value) -> Result<Value, String> {
     let mut wache = HELFER.lock().unwrap();
     for versuch in 0..2 {
         if wache.is_none() {
             *wache = Some(starten()?);
         }
         let h = wache.as_mut().unwrap();
-        let auftrag = json!({ "modell": modell_pfad(), "anweisung": anweisung, "text": text });
         let mut zeile = String::new();
         let ok = writeln!(h.ein, "{auftrag}").is_ok() && h.ein.flush().is_ok() && h.aus.read_line(&mut zeile).is_ok_and(|n| n > 0);
         if !ok {
@@ -78,10 +123,10 @@ pub fn umformen(anweisung: &str, text: &str) -> Result<String, String> {
             continue;
         }
         let antwort: Value = serde_json::from_str(&zeile).map_err(|e| e.to_string())?;
-        if let Some(t) = antwort["text"].as_str() {
-            return Ok(t.to_string());
+        if let Some(f) = antwort["fehler"].as_str() {
+            return Err(f.to_string());
         }
-        return Err(antwort["fehler"].as_str().unwrap_or("unbekannter Fehler").to_string());
+        return Ok(antwort);
     }
     unreachable!()
 }

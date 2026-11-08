@@ -21,4 +21,6 @@
 | 08.11.2026 | llama.cpp in eigenem Helfer-Prozess (`helfer/`) | whisper.cpp und llama.cpp bringen je ein eigenes ggml mit, in einem Programm kollidieren die Symbole |
 | 08.11.2026 | Anweisungen mit festen Regeln und einem Beispiel je Modus, Füllreste per Regel | ohne das vertauschte das Modell die Person („schick ich“ → „schicken Sie“) und erfand Dank |
 | 08.11.2026 | Schnellwahl mit Ziffern 1–5 für 4,5 s nach „Fertig“ | Modus wechseln ohne Maus; jede andere Taste beendet die Wahl, damit Tippen nie verschluckt wird |
+| 08.11.2026 | Sprechertrennung mit sherpa-onnx im Helfer, direkt über `sherpa-rs-sys` | `sherpa-rs` setzt beide Modelle fest auf einen Kern: 24,4 s für 31 s Gespräch; mit allen Kernen 5,3 s |
+| 08.11.2026 | Abschnitte von Whisper bekommen die Person mit der längsten Überlappung | einfach, nachvollziehbar, getestet; Pausen bleiben beim vorigen Sprecher |
 

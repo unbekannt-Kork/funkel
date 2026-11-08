@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::aufnahme::{self, Aufnahme};
 use crate::einstellungen::{self, protokoll, Einstellungen};
-use crate::erkennung::Erkenner;
+use crate::erkennung::{self, Abschnitt, Erkenner};
 use crate::modus::{self, Modus};
 use crate::{ablage, ausloeser, helfer, modell, overlay, plattform};
 
@@ -27,6 +27,16 @@ enum Phase {
     Erkennt,
 }
 
+#[derive(Clone)]
+struct Letzte {
+    pfad: std::path::PathBuf,
+    /// wortgetreu, ohne Sprecher
+    roh: String,
+    abschnitte: Vec<Abschnitt>,
+    /// „Sprecher 1: …“, erst beim ersten Protokoll berechnet
+    mit_sprechern: Option<String>,
+}
+
 pub struct Ablauf {
     app: AppHandle,
     phase: Mutex<Phase>,
@@ -36,8 +46,8 @@ pub struct Ablauf {
     /// Für den Abgriff: läuft gerade eine Aufnahme? Dann beendet ein einzelner Tipp.
     pub laeuft: Arc<AtomicBool>,
     pub einstellungen: Mutex<Einstellungen>,
-    /// Letztes Diktat: Aufnahme und wortgetreuer Rohtext — Grundlage für das Umwandeln
-    letzte: Mutex<Option<(std::path::PathBuf, String)>>,
+    /// Letztes Diktat — Grundlage für das Umwandeln in einen anderen Modus
+    letzte: Mutex<Option<Letzte>>,
 }
 
 impl Ablauf {
@@ -162,37 +172,68 @@ impl Ablauf {
             overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
         });
         match ergebnis {
-            Ok(roh) if roh.is_empty() => {
+            Ok((roh, _)) if roh.is_empty() => {
                 let _ = ablage::text_speichern(pfad, "");
                 self.fehler("Nichts erkannt")
             }
-            Ok(roh) => {
+            Ok((roh, abschnitte)) => {
                 protokoll(&format!("Erkannt: {sekunden:.1} s Ton in {:.1} s", beginn.elapsed().as_secs_f32()));
                 let _ = ablage::roh_speichern(pfad, &roh);
-                *self.letzte.lock().unwrap() = Some((pfad.to_path_buf(), roh.clone()));
-                self.abliefern(pfad, &roh, werte.modus, werte.einfuegen, &feld);
+                *self.letzte.lock().unwrap() = Some(Letzte { pfad: pfad.to_path_buf(), roh, abschnitte, mit_sprechern: None });
+                self.abliefern(werte.modus, werte.einfuegen, &feld);
             }
             Err(e) => self.fehler(&e),
         }
     }
 
-    /// Rohtext im Modus umformen, ablegen, in die Zwischenablage, Fertig zeigen.
-    fn abliefern(&self, pfad: &std::path::Path, roh: &str, modus: Modus, einfuegen: bool, feld: &str) {
+    /// Für das Protokoll: Text mit „Sprecher 1: …“. Einmal berechnet, dann gemerkt.
+    fn mit_sprechern(&self, l: &Letzte) -> String {
+        if let Some(t) = &l.mit_sprechern {
+            return t.clone();
+        }
+        let personen = self.einstellungen.lock().unwrap().personen;
+        let beginn = Instant::now();
+        let text = match helfer::sprecher(&l.pfad, personen) {
+            Ok(s) => {
+                protokoll(&format!("Sprecher getrennt in {:.1} s", beginn.elapsed().as_secs_f32()));
+                erkennung::mit_sprechern(&l.abschnitte, &s)
+            }
+            Err(e) => {
+                protokoll(&format!("Sprechertrennung: {e} — ohne Sprecher weiter"));
+                l.roh.clone()
+            }
+        };
+        if let Some(gemerkt) = self.letzte.lock().unwrap().as_mut().filter(|g| g.pfad == l.pfad) {
+            gemerkt.mit_sprechern = Some(text.clone());
+        }
+        text
+    }
+
+    /// Letztes Diktat im Modus umformen, ablegen, in die Zwischenablage, Fertig zeigen.
+    fn abliefern(&self, modus: Modus, einfuegen: bool, feld: &str) {
+        let Some(l) = self.letzte.lock().unwrap().clone() else { return };
+        let (pfad, roh) = (l.pfad.as_path(), l.roh.as_str());
+        let eingabe = if modus == Modus::Protokoll {
+            overlay::senden(&self.app, feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.9 }));
+            self.mit_sprechern(&l)
+        } else {
+            roh.to_string()
+        };
         let text = match modus.anweisung() {
             None => roh.to_string(),
             Some(anweisung) => {
                 overlay::senden(&self.app, feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.92 }));
                 let beginn = Instant::now();
-                match helfer::umformen(&anweisung, roh) {
+                match helfer::umformen(&anweisung, &eingabe) {
                     Ok(t) if !t.is_empty() => {
                         protokoll(&format!("{} in {:.1} s", modus.name(), beginn.elapsed().as_secs_f32()));
                         modus::nachputzen(&t)
                     }
-                    Ok(_) => roh.to_string(),
+                    Ok(_) => eingabe.clone(),
                     Err(e) => {
                         // Lieber den Rohtext als nichts
                         protokoll(&format!("{}: {e} — Rohtext geliefert", modus.name()));
-                        roh.to_string()
+                        eingabe.clone()
                     }
                 }
             }
@@ -220,7 +261,9 @@ impl Ablauf {
 
     /// Schnellwahl oder Menü: das letzte Diktat in einem anderen Modus.
     pub fn umwandeln(self: &Arc<Self>, modus: Modus) {
-        let Some((pfad, roh)) = self.letzte.lock().unwrap().clone() else { return };
+        if self.letzte.lock().unwrap().is_none() {
+            return;
+        }
         {
             let mut phase = self.phase.lock().unwrap();
             if *phase != Phase::Bereit {
@@ -231,7 +274,7 @@ impl Ablauf {
         let feld = self.feld.lock().unwrap().clone();
         overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.5 }));
         // Schon eingefügter Text würde doppelt stehen: umgewandelt nur in die Zwischenablage
-        self.abliefern(&pfad, &roh, modus, false, &feld);
+        self.abliefern(modus, false, &feld);
     }
 
     /// Die gerade laufende Aufnahme — sie ist kein Absturz.

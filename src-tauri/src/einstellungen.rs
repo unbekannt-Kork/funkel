@@ -19,11 +19,13 @@ pub struct Einstellungen {
     pub aufbewahren_tage: u32,
     /// Was aus dem Gesagten wird
     pub modus: crate::modus::Modus,
+    /// Personen im Protokoll; 0 = selbst erkennen
+    pub personen: i32,
 }
 
 impl Default for Einstellungen {
     fn default() -> Self {
-        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default() }
+        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0 }
     }
 }
 

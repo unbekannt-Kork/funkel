@@ -8,6 +8,7 @@ type Einstellungen = {
   autostart: boolean;
   aufbewahren_tage: number;
   modus: string;
+  personen: number;
 };
 type Eintrag = { pfad: string; zeit: string; sekunden: number; text: string | null };
 type Status = {
@@ -45,6 +46,7 @@ async function laden() {
       : "für alles außer wortgetreu: lokales Sprachmodell laden (einmalig)";
   $("sprachmodell-knopf").hidden = s.sprachmodell;
   $<HTMLSelectElement>("modus").value = werte.modus;
+  $<HTMLSelectElement>("personen").value = String(werte.personen);
   $("taste-name").textContent = s.taste_name;
   $<HTMLInputElement>("einfuegen").checked = werte.einfuegen;
   $<HTMLSelectElement>("sprache").value = werte.sprache;
@@ -109,6 +111,7 @@ async function speichern() {
   werte.sprache = $<HTMLSelectElement>("sprache").value;
   werte.autostart = $<HTMLInputElement>("autostart").checked;
   werte.modus = $<HTMLSelectElement>("modus").value;
+  werte.personen = Number($<HTMLSelectElement>("personen").value);
   werte.aufbewahren_tage = Number($<HTMLSelectElement>("aufbewahren").value);
   await invoke("speichern", { einstellungen: werte });
 }
@@ -130,7 +133,7 @@ listen<string | null>("sprachmodell-fertig", ({ payload: fehler }) => {
   if (fehler) $("sprachmodell-text").textContent = `Laden fehlgeschlagen: ${fehler}`;
   else laden();
 });
-for (const id of ["einfuegen", "sprache", "autostart", "aufbewahren", "modus"]) $(id).addEventListener("change", speichern);
+for (const id of ["einfuegen", "sprache", "autostart", "aufbewahren", "modus", "personen"]) $(id).addEventListener("change", speichern);
 $("woerterbuch").addEventListener("change", () =>
   invoke("woerterbuch_speichern", { text: $<HTMLTextAreaElement>("woerterbuch").value }),
 );
