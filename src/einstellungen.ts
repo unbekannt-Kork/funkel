@@ -10,6 +10,7 @@ type Einstellungen = {
   modus: string;
   personen: number;
   ton: boolean;
+  anzeige: string;
 };
 type Eintrag = { pfad: string; zeit: string; sekunden: number; text: string | null };
 type Status = {
@@ -51,6 +52,7 @@ async function laden() {
   $("taste-name").textContent = s.taste_name;
   $<HTMLInputElement>("einfuegen").checked = werte.einfuegen;
   $<HTMLInputElement>("ton").checked = werte.ton;
+  $<HTMLSelectElement>("anzeige").value = werte.anzeige;
   $<HTMLSelectElement>("sprache").value = werte.sprache;
   $<HTMLInputElement>("autostart").checked = werte.autostart;
   // Nicht überschreiben, während jemand tippt
@@ -111,6 +113,7 @@ function verlaufZeigen(liste: Eintrag[]) {
 async function speichern() {
   werte.einfuegen = $<HTMLInputElement>("einfuegen").checked;
   werte.ton = $<HTMLInputElement>("ton").checked;
+  werte.anzeige = $<HTMLSelectElement>("anzeige").value;
   werte.sprache = $<HTMLSelectElement>("sprache").value;
   werte.autostart = $<HTMLInputElement>("autostart").checked;
   werte.modus = $<HTMLSelectElement>("modus").value;
@@ -136,7 +139,7 @@ listen<string | null>("sprachmodell-fertig", ({ payload: fehler }) => {
   if (fehler) $("sprachmodell-text").textContent = `Laden fehlgeschlagen: ${fehler}`;
   else laden();
 });
-for (const id of ["ton", "einfuegen", "sprache", "autostart", "aufbewahren", "modus", "personen"]) $(id).addEventListener("change", speichern);
+for (const id of ["anzeige", "ton", "einfuegen", "sprache", "autostart", "aufbewahren", "modus", "personen"]) $(id).addEventListener("change", speichern);
 $("woerterbuch").addEventListener("change", () =>
   invoke("woerterbuch_speichern", { text: $<HTMLTextAreaElement>("woerterbuch").value }),
 );

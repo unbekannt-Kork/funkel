@@ -94,6 +94,8 @@ function alleAbbrechen() {
 }
 
 let uhrTakt = 0;
+// Einstellung „Anzeige“: false = nur das Feld, kein Rahmen
+let mitRand = true;
 let erkenntSeit = 0;
 
 function uhrText(ms: number) {
@@ -154,7 +156,7 @@ function kanteSetzen(anteil: number, sofort = false) {
 function hoert(mitFeld: boolean) {
   alleAbbrechen();
   kante.className = "";
-  rand.className = "an";
+  rand.className = mitRand ? "an" : "";
   zeigeStufe("breit");
   spaeter(ANLAUF_MS, () => zeigeStufe("schmal"));
   if (mitFeld) {
@@ -176,7 +178,7 @@ function erkennt(mitFeld: boolean, anteil: number) {
     // Farbschein aus, klare grüne Kante an
     rand.className = "";
     kanteSetzen(0, true);
-    kante.className = "an";
+    kante.className = mitRand ? "an" : "";
     if (mitFeld) {
       if (feld.classList.contains("hoert")) {
         feld.classList.remove("hoert");
@@ -211,7 +213,7 @@ function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
   spaeter(warten, () => {
     // Kante ganz hoch, einmal aufblitzen mit kleinem Ton, dann weg
     kanteSetzen(1);
-    kante.className = "an bim";
+    kante.className = mitRand ? "an bim" : "";
     // Bim: kurz deutlich breiter, dann zurück
     spaeter(60, () => kanteZu(KANTE_ENDE + 10));
     spaeter(200, () => kanteZu(KANTE_ENDE));
@@ -269,6 +271,10 @@ if (vorschau) {
     erkennt(true, Number(wert ?? 0));
     erkennt(true, Number(wert ?? 0));
   }
+  if (zustand === "wahl") {
+    wahlZeigen(["Wortgetreu", "Bereinigt", "Mail", "WhatsApp", "Protokoll"], Number(wert ?? 0));
+    feldSetzen("an", "fertig", "zusammen", "wahl");
+  }
   if (zustand === "bim") {
     erkennt(true, 1);
     kanteZu(KANTE_ENDE + 10, true);
@@ -278,6 +284,7 @@ if (vorschau) {
 // Nur Ereignisse an dieses Fenster (und an alle): `listen` aus api/event hörte auch
 // die der anderen Bildschirme mit, dann stand das Feld überall.
 if (!vorschau) getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: z }) => {
+  if ("rand" in z) mitRand = (z as { rand?: boolean }).rand !== false;
   switch (z.phase) {
     case "hoert": return hoert(z.feld);
     case "pegel": return warme.forEach((w) => (w.style.opacity = String(z.wert)));

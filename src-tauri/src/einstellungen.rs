@@ -23,11 +23,13 @@ pub struct Einstellungen {
     pub personen: i32,
     /// Kleiner Ton, wenn der Text fertig ist
     pub ton: bool,
+    /// `beides` (Rahmen und Feld), `rahmen` oder `feld`
+    pub anzeige: String,
 }
 
 impl Default for Einstellungen {
     fn default() -> Self {
-        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0, ton: true }
+        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0, ton: true, anzeige: "beides".into() }
     }
 }
 

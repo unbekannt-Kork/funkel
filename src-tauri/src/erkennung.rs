@@ -124,6 +124,67 @@ pub fn mit_sprechern(abschnitte: &[Abschnitt], sprecher: &[(f32, f32, i32)]) -> 
     zeilen.iter().map(|(nr, text)| format!("Sprecher {}: {text}", nr + 1)).collect::<Vec<_>>().join("\n\n")
 }
 
+fn pegel_db(ton: &[f32]) -> f32 {
+    if ton.is_empty() {
+        return -99.0;
+    }
+    let mittel = ton.iter().map(|x| x * x).sum::<f32>() / ton.len() as f32;
+    10.0 * mittel.max(1e-12).log10()
+}
+
+/// Wo das Sprechen endet: Index nach der letzten lauten Stelle plus 0,5 s.
+/// In stiller Luft erfindet Whisper Schlusssätze (im Vorgänger am 17.09.2026
+/// gemessen: 10 s Ruhe bei −65 dB → „Tschüss, tschüss, tschüss“). Zählt nur, was
+/// 300 ms am Stück laut ist; die letzten 0,4 s (Klick der Taste) zählen nicht.
+pub fn sprechen_endet(ton: &[f32], rate: usize) -> usize {
+    let rahmen = rate / 50; // 20 ms
+    let anzahl = ton.len() / rahmen;
+    if anzahl < 20 {
+        return ton.len();
+    }
+    let leistung: Vec<f32> = (0..anzahl).map(|i| ton[i * rahmen..(i + 1) * rahmen].iter().map(|x| x * x).sum::<f32>() / rahmen as f32).collect();
+    let db: Vec<f32> = (0..anzahl)
+        .map(|i| {
+            let (von, bis) = (i.saturating_sub(7), (i + 8).min(anzahl));
+            let m = leistung[von..bis].iter().sum::<f32>() / (bis - von) as f32;
+            10.0 * m.max(1e-12).log10()
+        })
+        .collect();
+    let mut sortiert = db.clone();
+    sortiert.sort_by(f32::total_cmp);
+    let laut = sortiert[(sortiert.len() * 95 / 100).min(sortiert.len() - 1)];
+    let schwelle = (laut - 20.0).max(-50.0);
+    match db[..anzahl.saturating_sub(20).max(1)].iter().rposition(|&d| d > schwelle) {
+        Some(letzte) => ((letzte + 25) * rahmen).min(ton.len()),
+        None => 0,
+    }
+}
+
+/// Streicht Schlussabschnitte, die im Ton nicht zu hören sind: mehr als 20 dB
+/// unter dem Median der übrigen (im Vorgänger gemessen: gesprochen −35 dB,
+/// erfundenes „Tschüss“ −65 dB).
+pub fn nachlauf_streichen(abschnitte: Vec<Abschnitt>, ton: &[f32], rate: usize) -> Vec<Abschnitt> {
+    if abschnitte.len() < 3 {
+        return abschnitte;
+    }
+    let pegel: Vec<f32> = abschnitte
+        .iter()
+        .map(|a| {
+            let von = ((a.von * rate as f32) as usize).min(ton.len());
+            let bis = ((a.bis * rate as f32) as usize).clamp(von, ton.len());
+            pegel_db(&ton[von..bis])
+        })
+        .collect();
+    let mut sortiert = pegel.clone();
+    sortiert.sort_by(f32::total_cmp);
+    let grenze = sortiert[sortiert.len() / 2] - 20.0;
+    let mut behalten = abschnitte.len();
+    while behalten > 2 && pegel[behalten - 1] < grenze {
+        behalten -= 1;
+    }
+    abschnitte.into_iter().take(behalten).collect()
+}
+
 /// Leerraum glätten und erfundene Sätze verwerfen.
 pub fn aufraeumen(text: &str) -> String {
     let glatt = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -154,6 +215,40 @@ mod tests {
     fn pause_bleibt_beim_vorigen_sprecher() {
         let abschnitte = [ab(0.0, 2.0, "Eins."), ab(10.0, 11.0, "Zwei.")];
         assert_eq!(mit_sprechern(&abschnitte, &[(0.0, 2.0, 1)]), "Sprecher 2: Eins. Zwei.");
+    }
+
+    fn laut(sekunden: f32, rate: usize) -> Vec<f32> {
+        (0..(sekunden * rate as f32) as usize).map(|i| (i as f32 / 9.0).sin() * 0.3).collect()
+    }
+
+    #[test]
+    fn stille_am_ende_wird_abgeschnitten() {
+        let rate = 16_000;
+        let mut ton = laut(3.0, rate);
+        ton.extend(vec![0.0005; 10 * rate]); // 10 s fast still
+        let ende = sprechen_endet(&ton, rate);
+        assert!(ende > 3 * rate && ende < 4 * rate, "Ende bei {:.2} s", ende as f32 / rate as f32);
+    }
+
+    #[test]
+    fn klick_der_taste_haelt_die_stille_nicht_offen() {
+        let rate = 16_000;
+        let mut ton = laut(2.0, rate);
+        ton.extend(vec![0.0; 5 * rate]);
+        ton.extend(laut(0.05, rate)); // Klick ganz am Ende
+        ton.extend(vec![0.0; rate / 10]);
+        assert!(sprechen_endet(&ton, rate) < 3 * rate);
+    }
+
+    #[test]
+    fn leiser_schlusssatz_wird_gestrichen() {
+        let rate = 16_000;
+        let mut ton = laut(6.0, rate);
+        ton.extend(vec![0.0003; 2 * rate]);
+        let a = |von: f32, bis: f32, t: &str| ab(von, bis, t);
+        let abschnitte = vec![a(0.0, 2.0, "Eins."), a(2.0, 4.0, "Zwei."), a(4.0, 6.0, "Drei."), a(6.0, 8.0, "Erfunden.")];
+        let rest = nachlauf_streichen(abschnitte, &ton, rate);
+        assert_eq!(rest.iter().map(|a| a.text.as_str()).collect::<Vec<_>>(), ["Eins.", "Zwei.", "Drei."]);
     }
 
     #[test]

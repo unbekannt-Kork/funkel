@@ -26,4 +26,8 @@
 | 08.11.2026 | Erkennung während der Aufnahme in Stücken von gut 20 s, Schnitt an der leisesten Stelle | 76 s Ton: nach dem Stopp 1,1 s statt 3,8 s, Wörter 100 % gleich (Test `mitlauf_spart_zeit`) |
 | 08.11.2026 | Aufnahme: Farbschein wie Apple Intelligence; Erkennung: klare grüne Kante, eine Farbe, wächst mit dem Fortschritt; Ende: Aufblitzen und kleiner Ton | Louis: der grüne Verlauf war „verwirrend, weil man nicht rafft, wann das der Fall ist“ |
 | 08.11.2026 | Kante als SVG-Maske, Breite per Zeitgeber | ein Schatten mit 6000 px Ausdehnung zeichnet WebKit nicht; `requestAnimationFrame` ist im Randfenster gedrosselt |
+| 08.11.2026 | Stille am Ende wird vor Whisper abgeschnitten, unhörbare Schlussabschnitte gestrichen | Whisper erfand Schlusssätze in der Stille; Regeln und Schwellen aus dem Vorgänger (gemessen 17.09.2026) |
+| 08.11.2026 | Anzeige wählbar: Rahmen und Feld (Standard), nur Rahmen, nur Feld | Louis: „umschalten können … aber die Kombination, wie wir es jetzt haben, finde ich für mich gut“ |
+| 08.11.2026 | Modus-Auswahl im Stil des „Hört zu“-Felds, aktiver Modus mit grünem Punkt | ein Design statt zweier |
+| 08.11.2026 | Eigenes Signier-Zertifikat „Funkel Lokal“ plus Mikrofon-Berechtigung (audio-input) | Freigaben bleiben über Updates; die gehärtete Laufzeit liefert ohne Berechtigung nur Stille |
 

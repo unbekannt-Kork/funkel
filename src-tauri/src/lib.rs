@@ -63,6 +63,7 @@ fn speichern(app: AppHandle, ablauf: State<Arc<Ablauf>>, einstellungen: Einstell
     einstellungen::speichern(&einstellungen)?;
     autostart_setzen(&app, einstellungen.autostart);
     ausloeser::taste_setzen(aktuelle_taste(&einstellungen));
+    overlay::anzeige_setzen(&einstellungen.anzeige);
     *ablauf.einstellungen.lock().unwrap() = einstellungen;
     Ok(())
 }
@@ -253,6 +254,7 @@ pub fn run() {
                 protokoll(&format!("{weg} alte Aufnahme(n) nach {} Tagen gelöscht", werte.aufbewahren_tage));
             }
             let liegen = ablage::unfertige(None);
+            overlay::anzeige_setzen(&werte.anzeige);
             let ablauf = Ablauf::neu(handle.clone(), werte.clone());
             app.manage(ablauf.clone());
 

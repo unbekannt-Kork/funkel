@@ -8,6 +8,13 @@ use crate::plattform;
 
 const PRAEFIX: &str = "rand-";
 
+/// Was gezeigt wird: `beides`, `rahmen` oder `feld` (aus den Einstellungen)
+static ANZEIGE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub fn anzeige_setzen(art: &str) {
+    *ANZEIGE.lock().unwrap() = art.to_string();
+}
+
 fn bildschirme(app: &AppHandle) -> Vec<tauri::Monitor> {
     app.available_monitors().unwrap_or_default()
 }
@@ -78,8 +85,14 @@ pub fn feld_fenster(app: &AppHandle) -> String {
 
 /// Schickt den Zustand an alle Randfenster; `mit_feld(true)` für das Fenster mit dem Feld.
 pub fn senden(app: &AppHandle, feld: &str, zustand: impl Fn(bool) -> Value) {
+    let art = ANZEIGE.lock().unwrap().clone();
+    let (mit_feld, mit_rand) = (art != "rahmen", art != "feld");
     for name in app.webview_windows().keys().filter(|n| n.starts_with(PRAEFIX)) {
-        let _ = app.emit_to(name.as_str(), "zustand", zustand(name == feld));
+        let mut wert = zustand(name == feld && mit_feld);
+        if let Some(objekt) = wert.as_object_mut() {
+            objekt.insert("rand".into(), Value::Bool(mit_rand));
+        }
+        let _ = app.emit_to(name.as_str(), "zustand", wert);
     }
 }
 
