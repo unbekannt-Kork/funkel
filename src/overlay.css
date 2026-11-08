@@ -189,7 +189,7 @@ html, body {
   width: 0;
   border-radius: 3px;
   background: var(--gruen);
-  transition: width 0.25s linear;
+  /* Breite setzt overlay.ts im selben Takt wie die Kante */
 }
 
 /* Hört zu → Balken: der Punkt rutscht an den Balkenanfang, wird grün und flach */
