@@ -65,7 +65,48 @@ extern "C" {
 #[link(name = "Carbon", kind = "framework")]
 extern "C" {
     fn LMGetKbdType() -> u8;
-    fn KBGetLayoutType(kbd_type: i16) -> u32;
+    fn TISCopyCurrentKeyboardLayoutInputSource() -> *const c_void;
+    fn TISGetInputSourceProperty(quelle: *const c_void, schluessel: *const c_void) -> *const c_void;
+    fn UCKeyTranslate(
+        layout: *const c_void,
+        code: u16,
+        aktion: u16,
+        zusatz: u32,
+        tastatur: u32,
+        optionen: u32,
+        tot: *mut u32,
+        max: usize,
+        laenge: *mut usize,
+        zeichen: *mut u16,
+    ) -> i32;
+    static kTISPropertyUnicodeKeyLayoutData: *const c_void;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFDataGetBytePtr(daten: *const c_void) -> *const c_void;
+}
+
+/// Welches Zeichen liefert diese Taste im aktuellen Layout (ohne tote Tasten)?
+/// Muss im Hauptfaden laufen.
+fn zeichen_von(code: u16) -> Option<char> {
+    unsafe {
+        let quelle = TISCopyCurrentKeyboardLayoutInputSource();
+        if quelle.is_null() {
+            return None;
+        }
+        let daten = TISGetInputSourceProperty(quelle, kTISPropertyUnicodeKeyLayoutData);
+        let ergebnis = if daten.is_null() {
+            None
+        } else {
+            let (mut tot, mut laenge, mut puffer) = (0u32, 0usize, [0u16; 4]);
+            // Aktion 0 = gedrückt, Option 1 = tote Tasten liefern ihr Zeichen sofort
+            let s = UCKeyTranslate(CFDataGetBytePtr(daten), code, 0, 0, LMGetKbdType() as u32, 1, &mut tot, 4, &mut laenge, puffer.as_mut_ptr());
+            (s == 0 && laenge > 0).then(|| char::decode_utf16(puffer[..laenge].iter().copied()).next()?.ok()).flatten()
+        };
+        CFRelease(quelle);
+        ergebnis
+    }
 }
 
 static TAP: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
@@ -201,10 +242,29 @@ pub fn freigabe_oeffnen() {
         .spawn();
 }
 
-/// Die Taste unter Escape: auf ISO-Tastaturen (deutsch: ^) Code 10, auf ANSI (US: `) Code 50.
+/// Die Taste unter Escape, aus dem Tastaturlayout gelesen statt geraten:
+/// deutsch `^` auf Code 10, US `` ` `` auf Code 50. Die Bauart (ISO/ANSI), die
+/// macOS meldet, taugt nicht: eine deutsche Tastatur kam als „ANSI“ an, Funkel
+/// hörte auf Code 50 und `^^` tat nichts (08.11.2026). Einmal ermittelt, dann gemerkt.
 pub fn standard_taste() -> u32 {
-    const ISO: u32 = u32::from_be_bytes(*b"ISO ");
-    if unsafe { KBGetLayoutType(LMGetKbdType() as i16) } == ISO { 10 } else { 50 }
+    static TASTE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *TASTE.get_or_init(|| match (zeichen_von(10), zeichen_von(50)) {
+        (Some('^' | '`'), _) => 10,
+        (_, Some('^' | '`')) => 50,
+        _ => 10,
+    })
+}
+
+/// Ziffern 1–5 der oberen Reihe (für die Schnellwahl der Modi)
+pub fn ziffer(code: u32) -> Option<u8> {
+    match code {
+        18 => Some(1),
+        19 => Some(2),
+        20 => Some(3),
+        21 => Some(4),
+        23 => Some(5),
+        _ => None,
+    }
 }
 
 pub fn tasten_name(code: u32) -> String {

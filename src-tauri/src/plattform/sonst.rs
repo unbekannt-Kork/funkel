@@ -9,5 +9,6 @@ pub fn freigabe() -> bool { false }
 pub fn freigabe_anfragen() {}
 pub fn freigabe_oeffnen() {}
 pub fn standard_taste() -> u32 { 0 }
+pub fn ziffer(_: u32) -> Option<u8> { None }
 pub fn tasten_name(code: u32) -> String { format!("Taste {code}") }
 pub fn fenster_ueber_allem(_: &tauri::WebviewWindow) {}

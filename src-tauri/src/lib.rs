@@ -1,11 +1,15 @@
 //! Funkel: zweimal eine Taste tippen, sprechen, einmal tippen — der Text liegt
 //! in der Zwischenablage. Erkennung offline mit Whisper.
+mod ablage;
 mod ablauf;
 mod aufnahme;
 mod ausloeser;
 mod einstellungen;
 mod erkennung;
+mod helfer;
+mod mitlauf;
 mod modell;
+mod modus;
 mod overlay;
 mod plattform;
 
@@ -15,17 +19,21 @@ use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_autostart::MacosLauncher;
+#[cfg(not(target_os = "macos"))]
+use tauri_plugin_autostart::ManagerExt;
 
 use ablauf::Ablauf;
 use einstellungen::{protokoll, Einstellungen};
 
 #[derive(Serialize)]
 struct Status {
+    verlauf: Vec<ablage::Eintrag>,
     einstellungen: Einstellungen,
     taste_name: String,
     freigabe: bool,
     modell: bool,
+    sprachmodell: bool,
     woerterbuch: String,
 }
 
@@ -36,10 +44,15 @@ fn aktuelle_taste(werte: &Einstellungen) -> u32 {
 #[tauri::command]
 fn status(ablauf: State<Arc<Ablauf>>) -> Status {
     let werte = ablauf.einstellungen.lock().unwrap().clone();
+    let laufende = ablauf.laufende();
+    let mut verlauf = ablage::eintraege(laufende.as_deref());
+    verlauf.truncate(30);
     Status {
+        verlauf,
         taste_name: plattform::tasten_name(aktuelle_taste(&werte)),
         freigabe: plattform::freigabe() && plattform::abgriff_wach_halten(),
         modell: modell::vorhanden(),
+        sprachmodell: helfer::modell_vorhanden(),
         woerterbuch: einstellungen::woerterbuch(),
         einstellungen: werte,
     }
@@ -52,6 +65,31 @@ fn speichern(app: AppHandle, ablauf: State<Arc<Ablauf>>, einstellungen: Einstell
     ausloeser::taste_setzen(aktuelle_taste(&einstellungen));
     *ablauf.einstellungen.lock().unwrap() = einstellungen;
     Ok(())
+}
+
+#[tauri::command]
+fn wiederherstellen(ablauf: State<Arc<Ablauf>>, pfad: String) -> Result<(), String> {
+    // Nur Dateien aus dem eigenen Ordner
+    let p = std::path::PathBuf::from(&pfad);
+    if !p.starts_with(ablage::ordner()) {
+        return Err("Unbekannte Datei".into());
+    }
+    ablauf.inner().clone().wiederherstellen(p)
+}
+
+#[tauri::command]
+fn kopieren(text: String) -> Result<(), String> {
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ordner_oeffnen() {
+    let ordner = ablage::ordner();
+    let _ = std::fs::create_dir_all(&ordner);
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(&ordner).spawn();
+    #[cfg(windows)]
+    let _ = std::process::Command::new("explorer").arg(&ordner).spawn();
 }
 
 #[tauri::command]
@@ -86,6 +124,60 @@ fn modell_laden(app: AppHandle, ablauf: State<Arc<Ablauf>>) {
     });
 }
 
+#[tauri::command]
+fn sprachmodell_laden(app: AppHandle) {
+    std::thread::spawn(move || {
+        let melder = app.clone();
+        // Nacheinander; der Balken zeigt das größte (Sprachmodell), die kleinen laufen schnell durch
+        let ergebnis = helfer::fehlende_modelle().into_iter().try_for_each(|(quelle, ziel, mindest)| {
+            let melder = melder.clone();
+            modell::laden(quelle, &ziel, mindest, move |geladen, gesamt| {
+                let _ = melder.emit("sprachmodell-fortschritt", serde_json::json!({ "geladen": geladen, "gesamt": gesamt }));
+            })
+        });
+        if let Err(e) = &ergebnis {
+            protokoll(&format!("Sprachmodell: {e}"));
+        }
+        let _ = app.emit("sprachmodell-fertig", ergebnis.err());
+    });
+}
+
+/// Mac: eigener LaunchAgent mit KeepAlive — nach Absturz startet Funkel nach 10 s neu,
+/// „Funkel beenden“ im Menü (sauberes Ende) bleibt beendet.
+#[cfg(target_os = "macos")]
+fn autostart_setzen(_app: &AppHandle, an: bool) {
+    let ordner = dirs::home_dir().unwrap_or_default().join("Library/LaunchAgents");
+    let datei = ordner.join("de.theostudio.funkel.plist");
+    // Alten Eintrag des Autostart-Plugins ablösen, sonst starten zwei
+    let _ = std::fs::remove_file(ordner.join("Funkel.plist"));
+    if !an {
+        let _ = std::fs::remove_file(&datei);
+        return;
+    }
+    let Ok(programm) = std::env::current_exe() else { return };
+    let inhalt = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.theostudio.funkel</string>
+  <key>ProgramArguments</key><array><string>{}</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
+</dict>
+</plist>
+"#,
+        programm.display()
+    );
+    if std::fs::read_to_string(&datei).ok().as_deref() != Some(inhalt.as_str()) {
+        let _ = std::fs::create_dir_all(&ordner);
+        let _ = std::fs::write(&datei, inhalt);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
 fn autostart_setzen(app: &AppHandle, an: bool) {
     let start = app.autolaunch();
     let ist = start.is_enabled().unwrap_or(false);
@@ -139,6 +231,8 @@ fn menue_bauen(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Nur einmal: zwei Funkel hörten beide auf die Taste. Ein zweiter Start öffnet die Einstellungen.
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| einstellungen_zeigen(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .setup(|app| {
             #[cfg(target_os = "macos")]
@@ -146,6 +240,11 @@ pub fn run() {
 
             let handle = app.handle().clone();
             let werte = einstellungen::laden();
+            let weg = ablage::aufraeumen(werte.aufbewahren_tage);
+            if weg > 0 {
+                protokoll(&format!("{weg} alte Aufnahme(n) nach {} Tagen gelöscht", werte.aufbewahren_tage));
+            }
+            let liegen = ablage::unfertige(None);
             let ablauf = Ablauf::neu(handle.clone(), werte.clone());
             app.manage(ablauf.clone());
 
@@ -160,6 +259,14 @@ pub fn run() {
                 werte.doppeltipp_ms,
                 ausloeser::Rueckrufe {
                     ausloesen: Box::new(move || ausloeser_ablauf.umschalten()),
+                    umwandeln: {
+                        let a = ablauf.clone();
+                        Box::new(move |n| {
+                            if let Some(m) = modus::Modus::aus_nummer(n) {
+                                a.umwandeln(m);
+                            }
+                        })
+                    },
                     gelernt: Box::new(move |code| {
                         let ablauf = lern_app.state::<Arc<Ablauf>>();
                         let mut w = ablauf.einstellungen.lock().unwrap();
@@ -170,7 +277,12 @@ pub fn run() {
                     laeuft: ablauf.laeuft.clone(),
                 },
             );
-            protokoll(&format!("Start, Tastatur {}", if abgriff { "wird gelesen" } else { "ohne Freigabe" }));
+            let taste = aktuelle_taste(&werte);
+            protokoll(&format!(
+                "Start, Taste {} (Code {taste}), Tastatur {}",
+                plattform::tasten_name(taste),
+                if abgriff { "wird gelesen" } else { "ohne Freigabe" }
+            ));
 
             // Modell im Hintergrund laden, damit das erste Diktat nicht wartet
             if modell::vorhanden() {
@@ -181,7 +293,10 @@ pub fn run() {
                     }
                 });
             }
-            if !abgriff || !modell::vorhanden() {
+            if !liegen.is_empty() {
+                protokoll(&format!("{} Aufnahme(n) nicht fertig, zuletzt {}", liegen.len(), ablage::kurz(&liegen[0])));
+            }
+            if !abgriff || !modell::vorhanden() || !liegen.is_empty() {
                 if !abgriff {
                     plattform::freigabe_anfragen();
                 }
@@ -191,7 +306,11 @@ pub fn run() {
             let waechter = handle.clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                plattform::abgriff_wach_halten();
+                // Freigabe erst nach dem Start erteilt: jetzt anhängen, ohne Neustart
+                if !plattform::abgriff_wach_halten() && plattform::freigabe() && ausloeser::neu_anhaengen() {
+                    protokoll("Freigabe erteilt, Tastatur wird gelesen");
+                    let _ = waechter.emit("status-geaendert", ());
+                }
                 let w = waechter.clone();
                 let _ = waechter.run_on_main_thread(move || overlay::sicherstellen(&w));
             });
@@ -200,10 +319,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             status,
             speichern,
+            wiederherstellen,
+            kopieren,
+            ordner_oeffnen,
             woerterbuch_speichern,
             freigabe_oeffnen,
             taste_lernen,
-            modell_laden
+            modell_laden,
+            sprachmodell_laden
         ])
         .build(tauri::generate_context!())
         .expect("Funkel startet nicht")

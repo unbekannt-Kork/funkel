@@ -21,11 +21,16 @@ pub fn vorhanden() -> bool {
 }
 
 /// Lädt das Modell; `fortschritt(geladen, gesamt)` etwa jedes Prozent.
-pub fn herunterladen(mut fortschritt: impl FnMut(u64, u64)) -> Result<(), String> {
-    let ziel = pfad();
+pub fn herunterladen(fortschritt: impl FnMut(u64, u64)) -> Result<(), String> {
+    laden(QUELLE, &pfad(), MINDESTGROESSE, fortschritt)
+}
+
+/// Lädt `quelle` nach `ziel` über eine Zwischendatei; erst vollständig wird sie umbenannt.
+pub fn laden(quelle: &str, ziel: &std::path::Path, mindestgroesse: u64, mut fortschritt: impl FnMut(u64, u64)) -> Result<(), String> {
+    let ziel = ziel.to_path_buf();
     fs::create_dir_all(ziel.parent().unwrap()).map_err(|e| e.to_string())?;
     let teil = ziel.with_extension("teil");
-    let antwort = ureq::get(QUELLE).call().map_err(|e| format!("Download: {e}"))?;
+    let antwort = ureq::get(quelle).call().map_err(|e| format!("Download: {e}"))?;
     let gesamt: u64 = antwort.header("Content-Length").and_then(|l| l.parse().ok()).unwrap_or(0);
     let mut leser = antwort.into_reader();
     let mut datei = fs::File::create(&teil).map_err(|e| e.to_string())?;
@@ -44,7 +49,7 @@ pub fn herunterladen(mut fortschritt: impl FnMut(u64, u64)) -> Result<(), String
         }
     }
     datei.flush().map_err(|e| e.to_string())?;
-    if geladen < MINDESTGROESSE || (gesamt > 0 && geladen != gesamt) {
+    if geladen < mindestgroesse || (gesamt > 0 && geladen != gesamt) {
         let _ = fs::remove_file(&teil);
         return Err("Download unvollständig".into());
     }

@@ -121,6 +121,11 @@ pub fn standard_taste() -> u32 {
     UNTER_ESCAPE
 }
 
+/// Ziffern 1–5 der oberen Reihe, als Scancode (für die Schnellwahl der Modi)
+pub fn ziffer(scan: u32) -> Option<u8> {
+    (0x02..=0x06).contains(&scan).then(|| (scan - 1) as u8)
+}
+
 pub fn tasten_name(scan: u32) -> String {
     let mut puffer = [0u16; 64];
     let laenge = unsafe { GetKeyNameTextW((scan << 16) as i32, &mut puffer) };

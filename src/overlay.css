@@ -93,7 +93,7 @@ html, body {
   color: #fff;
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.36s var(--kurve), transform 0.36s var(--kurve);
+  transition: opacity 0.36s var(--kurve), transform 0.36s var(--kurve), width 0.3s var(--kurve), margin-left 0.3s var(--kurve);
   pointer-events: none;
 }
 #feld.an { opacity: 1; transform: none; }
@@ -199,6 +199,41 @@ html, body {
 }
 .haken-zeichen { color: var(--gruen); }
 #feld.zusammen #haken { opacity: 1; transform: none; }
+
+/* Schnellwahl nach dem Fertig: Ziffer drücken wandelt dieselbe Aufnahme um */
+#wahl {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.25s var(--kurve);
+  pointer-events: none;
+}
+.wahl-knopf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.8);
+  white-space: nowrap;
+}
+.wahl-knopf kbd {
+  font: 600 12px ui-monospace, Menlo, monospace;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  color: #fff;
+}
+.wahl-knopf.aktiv { background: rgb(52 199 120 / 0.22); color: #fff; }
+#feld.wahl { width: 600px; margin-left: -300px; }
+#feld.wahl > :not(#wahl) { opacity: 0 !important; }
+#feld.wahl #wahl { opacity: 1; }
 
 #satz {
   position: absolute;

@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "pruefen": "tsc --noEmit && vite build && cargo test --manifest-path src-tauri/Cargo.toml && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings"
+    "pruefen": "tsc --noEmit && vite build && cargo test --manifest-path src-tauri/Cargo.toml && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo clippy --manifest-path helfer/Cargo.toml -- -D warnings",
+    "helfer": "node scripts/helfer-bauen.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2"

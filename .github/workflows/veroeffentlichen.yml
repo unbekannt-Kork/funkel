@@ -29,6 +29,9 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: helfer
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
