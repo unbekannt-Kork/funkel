@@ -41,6 +41,7 @@ pub struct Ablauf {
     app: AppHandle,
     phase: Mutex<Phase>,
     aufnahme: Mutex<Option<(Aufnahme, Instant)>>,
+    mitlauf: Mutex<Option<crate::mitlauf::Mitlauf>>,
     feld: Mutex<String>,
     pub erkenner: Arc<Erkenner>,
     /// Für den Abgriff: läuft gerade eine Aufnahme? Dann beendet ein einzelner Tipp.
@@ -56,6 +57,7 @@ impl Ablauf {
             app,
             phase: Mutex::new(Phase::Bereit),
             aufnahme: Mutex::new(None),
+            mitlauf: Mutex::new(None),
             feld: Mutex::new(String::new()),
             erkenner: Arc::new(Erkenner::neu()),
             laeuft: Arc::new(AtomicBool::new(false)),
@@ -81,6 +83,13 @@ impl Ablauf {
         *self.feld.lock().unwrap() = feld.clone();
         match Aufnahme::starten(ablage::neue_aufnahme()) {
             Ok(a) => {
+                let werte = self.einstellungen.lock().unwrap().clone();
+                *self.mitlauf.lock().unwrap() = Some(crate::mitlauf::Mitlauf::starten(
+                    a.pfad.clone(),
+                    self.erkenner.clone(),
+                    werte.sprache.clone(),
+                    einstellungen::vorlage(&werte.sprache),
+                ));
                 *self.aufnahme.lock().unwrap() = Some((a, Instant::now()));
                 *self.phase.lock().unwrap() = Phase::Hoert;
                 self.laeuft.store(true, Ordering::SeqCst);
@@ -117,10 +126,13 @@ impl Ablauf {
         }
         overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.0 }));
         let ich = self.clone();
+        let mitlauf = self.mitlauf.lock().unwrap().take();
         std::thread::spawn(move || {
             let pfad = aufnahme.pfad.clone();
-            match aufnahme.stoppen() {
-                Ok(ton) => ich.erkennen(ton, &pfad, feld),
+            let ergebnis = aufnahme.stoppen();
+            let vorab = mitlauf.map(|m| m.stoppen()).unwrap_or_default();
+            match ergebnis {
+                Ok(ton) => ich.erkennen_mit(ton, vorab, &pfad, feld),
                 Err(e) => ich.fehler(&format!("Aufnahme: {e} — der Ton liegt in {}", pfad.display())),
             }
         });
@@ -147,6 +159,11 @@ impl Ablauf {
     }
 
     fn erkennen(self: &Arc<Self>, ton: Vec<f32>, pfad: &std::path::Path, feld: String) {
+        self.erkennen_mit(ton, Default::default(), pfad, feld)
+    }
+
+    /// Wie `erkennen`, aber `vorab` ist schon während der Aufnahme erkannt: nur der Rest bleibt.
+    fn erkennen_mit(self: &Arc<Self>, ton: Vec<f32>, vorab: crate::mitlauf::Vorab, pfad: &std::path::Path, feld: String) {
         let sekunden = ton.len() as f32 / aufnahme::RATE as f32;
         if aufnahme::lautheit(&ton) < STILLE {
             let _ = ablage::text_speichern(pfad, "");
@@ -167,17 +184,31 @@ impl Ablauf {
         let beginn = Instant::now();
         // Whisper bis 90 % des Balkens, das Umformen den Rest
         let anteil_whisper = if werte.modus.anweisung().is_some() { 0.9 } else { 1.0 };
-        let ergebnis = self.erkenner.erkennen(&ton, &werte.sprache, &einstellungen::vorlage(&werte.sprache), move |prozent| {
-            let anteil = prozent as f32 / 100.0 * anteil_whisper;
-            overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
-        });
+        let rest_ab = vorab.fertig_bis.min(ton.len());
+        let versatz = rest_ab as f32 / aufnahme::RATE as f32;
+        let stuecke_vorab = vorab.abschnitte.len();
+        let ergebnis = self
+            .erkenner
+            .erkennen(&ton[rest_ab..], &werte.sprache, &einstellungen::vorlage(&werte.sprache), move |prozent| {
+                let anteil = prozent as f32 / 100.0 * anteil_whisper;
+                overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
+            })
+            .map(|(_, rest)| {
+                let mut alle = vorab.abschnitte;
+                alle.extend(rest.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
+                (erkennung::text_aus(&alle), alle)
+            });
         match ergebnis {
             Ok((roh, _)) if roh.is_empty() => {
                 let _ = ablage::text_speichern(pfad, "");
                 self.fehler("Nichts erkannt")
             }
             Ok((roh, abschnitte)) => {
-                protokoll(&format!("Erkannt: {sekunden:.1} s Ton in {:.1} s", beginn.elapsed().as_secs_f32()));
+                protokoll(&format!(
+                    "Erkannt: {sekunden:.1} s Ton, {:.1} s vorab ({stuecke_vorab} Abschnitte), Rest in {:.1} s",
+                    versatz,
+                    beginn.elapsed().as_secs_f32()
+                ));
                 let _ = ablage::roh_speichern(pfad, &roh);
                 *self.letzte.lock().unwrap() = Some(Letzte { pfad: pfad.to_path_buf(), roh, abschnitte, mit_sprechern: None });
                 self.abliefern(werte.modus, werte.einfuegen, &feld);
@@ -291,6 +322,9 @@ impl Ablauf {
         protokoll(&format!("Fehler: {text}"));
         if let Some((a, _)) = self.aufnahme.lock().unwrap().take() {
             let _ = a.stoppen();
+        }
+        if let Some(m) = self.mitlauf.lock().unwrap().take() {
+            m.stoppen();
         }
         self.zurueck();
         let feld = self.feld.lock().unwrap().clone();

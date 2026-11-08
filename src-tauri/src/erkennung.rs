@@ -16,6 +16,11 @@ pub struct Erkenner {
     kontext: Mutex<Option<WhisperContext>>,
 }
 
+/// Fügt Abschnitte zu einem Text zusammen und räumt auf.
+pub fn text_aus(abschnitte: &[Abschnitt]) -> String {
+    aufraeumen(&abschnitte.iter().map(|a| a.text.as_str()).collect::<Vec<_>>().join(" "))
+}
+
 /// Sätze, die Whisper bei Stille oder Rauschen erfindet (aus Untertiteln gelernt).
 /// Besteht der ganze Text nur daraus, wurde nichts gesagt.
 const ERFUNDEN: [&str; 8] = [

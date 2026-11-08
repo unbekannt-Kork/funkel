@@ -9,6 +9,8 @@ Umformulieren, sherpa-onnx für die Sprechertrennung.
 
 ## Schritte, je mit Abnahme
 
+Stand 08.11.2026: alle fünf umgesetzt und mit Tests ohne Bildschirm nachgewiesen (siehe docs/entscheidungen.md).
+
 1. **Aufnahmen sichern, keine Zeitgrenze** — Ton geht während der Aufnahme
    laufend auf die Platte, der Text danach ebenfalls; nach einem Absturz meldet
    Funkel beim Start „Aufnahme von 13:40 (2:13 min) nicht fertig — wiederherstellen?“.

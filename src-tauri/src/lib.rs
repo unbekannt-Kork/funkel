@@ -7,6 +7,7 @@ mod ausloeser;
 mod einstellungen;
 mod erkennung;
 mod helfer;
+mod mitlauf;
 mod modell;
 mod modus;
 mod overlay;

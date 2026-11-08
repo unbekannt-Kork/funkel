@@ -23,4 +23,5 @@
 | 08.11.2026 | Schnellwahl mit Ziffern 1–5 für 4,5 s nach „Fertig“ | Modus wechseln ohne Maus; jede andere Taste beendet die Wahl, damit Tippen nie verschluckt wird |
 | 08.11.2026 | Sprechertrennung mit sherpa-onnx im Helfer, direkt über `sherpa-rs-sys` | `sherpa-rs` setzt beide Modelle fest auf einen Kern: 24,4 s für 31 s Gespräch; mit allen Kernen 5,3 s |
 | 08.11.2026 | Abschnitte von Whisper bekommen die Person mit der längsten Überlappung | einfach, nachvollziehbar, getestet; Pausen bleiben beim vorigen Sprecher |
+| 08.11.2026 | Erkennung während der Aufnahme in Stücken von gut 20 s, Schnitt an der leisesten Stelle | 76 s Ton: nach dem Stopp 1,1 s statt 3,8 s, Wörter 100 % gleich (Test `mitlauf_spart_zeit`) |
 
