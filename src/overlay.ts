@@ -1,4 +1,5 @@
 // Rand und Feld eines Bildschirms. Rust schickt den Zustand, hier wird nur gezeigt.
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 type Zustand =
@@ -10,18 +11,23 @@ type Zustand =
   | { phase: "fehler"; feld: boolean; text: string };
 
 // Stufen des Rands: sichtbare Breite und Weichzeichner in Pixeln
-const STUFEN = { schmal: [6, 10], breit: [9, 14], bluete: [22, 18] } as const;
+// Aufnahme: kurz breit, dann schmal im Hintergrund
+const STUFEN = { schmal: [7, 12], breit: [11, 18] } as const;
 type Stufe = keyof typeof STUFEN;
 const RADIUS = 40;
 const ANLAUF_MS = 1300; // Start: kurz breit, dann schmal im Hintergrund
 const GRUEN_MINDESTENS_MS = 900; // die Erkennung ist oft schneller — so lange bleibt Grün sichtbar
-const BLUETE_MS = 500;
+const BIM_MS = 450;
+// Grüne Kante: Breite in Pixeln, wächst mit dem Fortschritt
+const KANTE_START = 3;
+const KANTE_ENDE = 14;
 const FERTIG_STEHT_MS = 2500;
 const FEHLER_STEHT_MS = 5000;
 const WAHL_AB_MS = 900; // erst „✓ Fertig“ lesen lassen, dann die Modi zeigen
 const WAHL_MS = 3600; // passt zu WAHL im Rust-Ablauf (4,5 s ab Fertig)
 
 const rand = document.getElementById("rand")!;
+const kante = document.getElementById("kante")!;
 const feld = document.getElementById("feld")!;
 const uhr = document.getElementById("uhr")!;
 const balken = document.getElementById("balken")!;
@@ -60,7 +66,7 @@ function bauen() {
     const m = maske(breite, hoehe, band, weich);
     el.style.setProperty("-webkit-mask-image", m);
     el.style.setProperty("mask-image", m);
-    for (const art of ["kuehl", "warm", "gruen"]) {
+    for (const art of ["kuehl", "warm"]) {
       const kegel = document.createElement("div");
       kegel.className = `kegel ${art}`;
       if (art === "warm") warme.push(kegel);
@@ -103,8 +109,51 @@ function feldSetzen(...klassen: string[]) {
   feld.classList.add(...klassen);
 }
 
+// Breite der Kante gleitet zum Ziel; Zeitgeber statt requestAnimationFrame (siehe feldSetzen)
+let kanteIst = KANTE_START;
+let kanteZiel = KANTE_START;
+let kanteTakt = 0;
+
+function kanteMaske(dicke: number) {
+  const b = window.innerWidth, h = window.innerHeight, d = dicke, r = 34;
+  const innen =
+    `M${d + r},${d} H${b - d - r} A${r},${r} 0 0 1 ${b - d},${d + r} V${h - d - r} ` +
+    `A${r},${r} 0 0 1 ${b - d - r},${h - d} H${d + r} A${r},${r} 0 0 1 ${d},${h - d - r} ` +
+    `V${d + r} A${r},${r} 0 0 1 ${d + r},${d} Z`;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${b}" height="${h}" viewBox="0 0 ${b} ${h}">` +
+    `<path fill="#000" fill-rule="evenodd" d="M0,0 H${b} V${h} H0 Z ${innen}"/></svg>`;
+  const m = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+  kante.style.setProperty("-webkit-mask-image", m);
+  kante.style.setProperty("mask-image", m);
+}
+
+function kanteZu(ziel: number, sofort = false) {
+  kanteZiel = ziel;
+  if (sofort) {
+    kanteIst = ziel;
+    kanteMaske(ziel);
+    return;
+  }
+  if (kanteTakt) return;
+  kanteTakt = window.setInterval(() => {
+    kanteIst += (kanteZiel - kanteIst) * 0.18;
+    if (Math.abs(kanteZiel - kanteIst) < 0.05) {
+      kanteIst = kanteZiel;
+      clearInterval(kanteTakt);
+      kanteTakt = 0;
+    }
+    kanteMaske(kanteIst);
+  }, 16);
+}
+
+function kanteSetzen(anteil: number, sofort = false) {
+  kanteZu(KANTE_START + (KANTE_ENDE - KANTE_START) * Math.max(0, Math.min(1, anteil)), sofort);
+}
+
 function hoert(mitFeld: boolean) {
   alleAbbrechen();
+  kante.className = "";
   rand.className = "an";
   zeigeStufe("breit");
   spaeter(ANLAUF_MS, () => zeigeStufe("schmal"));
@@ -124,8 +173,10 @@ function erkennt(mitFeld: boolean, anteil: number) {
   if (!rand.classList.contains("erkennt")) {
     alleAbbrechen();
     erkenntSeit = Date.now();
-    rand.className = "an erkennt";
-    zeigeStufe("breit");
+    // Farbschein aus, klare grüne Kante an
+    rand.className = "";
+    kanteSetzen(0, true);
+    kante.className = "an";
     if (mitFeld) {
       if (feld.classList.contains("hoert")) {
         feld.classList.remove("hoert");
@@ -137,6 +188,7 @@ function erkennt(mitFeld: boolean, anteil: number) {
       }
     }
   }
+  kanteSetzen(anteil);
   if (mitFeld) balken.style.width = `${Math.round(Math.max(0, Math.min(1, anteil)) * 100)}%`;
 }
 
@@ -157,10 +209,14 @@ function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
   const warten = Math.max(0, GRUEN_MINDESTENS_MS - (Date.now() - erkenntSeit));
   alleAbbrechen();
   spaeter(warten, () => {
-    // Rand: auf die grünste Stufe hoch, einmal weit, dann verglimmen
-    rand.className = "an fertig";
-    zeigeStufe("bluete");
-    spaeter(BLUETE_MS, () => (rand.className = "weg fertig"));
+    // Kante ganz hoch, einmal aufblitzen mit kleinem Ton, dann weg
+    kanteSetzen(1);
+    kante.className = "an bim";
+    // Bim: kurz deutlich breiter, dann zurück
+    spaeter(60, () => kanteZu(KANTE_ENDE + 10));
+    spaeter(200, () => kanteZu(KANTE_ENDE));
+    if (mitFeld) invoke("ton_fertig").catch(() => {});
+    spaeter(BIM_MS, () => (kante.className = "weg"));
     if (!mitFeld) return;
     feld.classList.remove("erkennt", "balken-da", "hoert");
     feld.classList.add("an", "fertig");
@@ -179,12 +235,14 @@ function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
 function aus() {
   alleAbbrechen();
   rand.className = "";
+  kante.className = "";
   feld.classList.replace("an", "weg");
 }
 
 function fehler(mitFeld: boolean, text: string) {
   alleAbbrechen();
   rand.className = "";
+  kante.className = "";
   if (!mitFeld) return;
   satz.textContent = text;
   feldSetzen("fehler");
@@ -195,9 +253,31 @@ function fehler(mitFeld: boolean, text: string) {
 bauen();
 window.addEventListener("resize", bauen);
 
+// Vorschau ohne Tauri, zum Prüfen in einem unsichtbaren Fenster:
+// overlay.html#vorschau=hoert | erkennt-0.4 | bim
+const vorschau = location.hash.match(/^#vorschau=(\w+)(?:-([\d.]+))?/);
+if (vorschau) {
+  document.body.style.background = "#1c1c22"; // nur zum Ansehen
+  // Unsichtbare Fenster halten Übergänge an: in der Vorschau sofort den Endzustand zeigen
+  const stil = document.createElement("style");
+  stil.textContent = "*{transition:none!important}";
+  document.head.appendChild(stil);
+  const [, zustand, wert] = vorschau;
+  if (zustand === "hoert") hoert(true);
+  if (zustand === "erkennt") {
+    hoert(true);
+    erkennt(true, Number(wert ?? 0));
+    erkennt(true, Number(wert ?? 0));
+  }
+  if (zustand === "bim") {
+    erkennt(true, 1);
+    kanteZu(KANTE_ENDE + 10, true);
+  }
+}
+
 // Nur Ereignisse an dieses Fenster (und an alle): `listen` aus api/event hörte auch
 // die der anderen Bildschirme mit, dann stand das Feld überall.
-getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: z }) => {
+if (!vorschau) getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: z }) => {
   switch (z.phase) {
     case "hoert": return hoert(z.feld);
     case "pegel": return warme.forEach((w) => (w.style.opacity = String(z.wert)));

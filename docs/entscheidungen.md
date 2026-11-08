@@ -24,4 +24,6 @@
 | 08.11.2026 | Sprechertrennung mit sherpa-onnx im Helfer, direkt über `sherpa-rs-sys` | `sherpa-rs` setzt beide Modelle fest auf einen Kern: 24,4 s für 31 s Gespräch; mit allen Kernen 5,3 s |
 | 08.11.2026 | Abschnitte von Whisper bekommen die Person mit der längsten Überlappung | einfach, nachvollziehbar, getestet; Pausen bleiben beim vorigen Sprecher |
 | 08.11.2026 | Erkennung während der Aufnahme in Stücken von gut 20 s, Schnitt an der leisesten Stelle | 76 s Ton: nach dem Stopp 1,1 s statt 3,8 s, Wörter 100 % gleich (Test `mitlauf_spart_zeit`) |
+| 08.11.2026 | Aufnahme: Farbschein wie Apple Intelligence; Erkennung: klare grüne Kante, eine Farbe, wächst mit dem Fortschritt; Ende: Aufblitzen und kleiner Ton | Louis: der grüne Verlauf war „verwirrend, weil man nicht rafft, wann das der Fall ist“ |
+| 08.11.2026 | Kante als SVG-Maske, Breite per Zeitgeber | ein Schatten mit 6000 px Ausdehnung zeichnet WebKit nicht; `requestAnimationFrame` ist im Randfenster gedrosselt |
 

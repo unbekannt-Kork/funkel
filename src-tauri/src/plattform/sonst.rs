@@ -5,6 +5,7 @@ pub fn abgriff_starten(_: Rueckruf) -> bool { false }
 pub fn abgriff_wach_halten() -> bool { false }
 pub fn taste_senden(_: u32) {}
 pub fn einfuegen() {}
+pub fn ton_fertig() {}
 pub fn freigabe() -> bool { false }
 pub fn freigabe_anfragen() {}
 pub fn freigabe_oeffnen() {}

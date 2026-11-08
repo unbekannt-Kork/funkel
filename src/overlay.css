@@ -1,13 +1,15 @@
 /* Rand und Feld. Das Fenster ist durchsichtig, mausdurchlässig und liegt über allem. */
 :root {
-  --violett: rgb(150 146 240);
-  --flieder: rgb(190 172 255);
-  --rose: rgb(255 128 160);
+  /* Aufnahme: lebendig wie Apple Intelligence */
+  --ki-violett: #bc82f3;
+  --ki-pink: #f5b9ea;
+  --ki-blau: #8d9fff;
+  --ki-rot: #ff6778;
+  --ki-orange: #ffba71;
+  --ki-lila: #c686ff;
   --rot: rgb(255 82 72);
-  --orange: rgb(255 156 92);
-  --mint: rgb(120 236 190);
-  --gruen: rgb(52 199 120);
-  --tuerkis: rgb(90 210 230);
+  /* Erkennung: eine einzige, klare Farbe */
+  --gruen: #30d158;
   --kurve: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -62,14 +64,40 @@ html, body {
   animation: drehen 5s linear infinite;
   transition: opacity 0.8s var(--kurve);
 }
-.kuehl { background: conic-gradient(var(--violett), var(--flieder), var(--rose), var(--flieder), var(--violett), var(--flieder), var(--violett)); }
-.warm { background: conic-gradient(from 60deg, var(--rot), var(--orange), var(--rose), var(--rot), var(--orange), var(--rose), var(--rot)); opacity: 0; transition-duration: 0.25s; }
-.gruen { background: conic-gradient(var(--mint), var(--gruen), var(--tuerkis), var(--gruen), var(--mint), var(--gruen), var(--tuerkis), var(--gruen), var(--mint)); opacity: 0; }
-#rand.erkennt .kegel { animation-duration: 1.1s; }
-#rand.erkennt .kuehl, #rand.erkennt .warm { opacity: 0 !important; }
-#rand.erkennt .gruen { opacity: 0.6; }
-#rand.fertig .kuehl, #rand.fertig .warm { opacity: 0 !important; }
-#rand.fertig .gruen { opacity: 1; transition-duration: 0.3s; }
+.kuehl {
+  background: conic-gradient(var(--ki-blau), var(--ki-violett), var(--ki-pink), var(--ki-orange), var(--ki-rot), var(--ki-lila), var(--ki-blau));
+}
+/* Stimme: wärmer und heller, je lauter gesprochen wird */
+.warm {
+  background: conic-gradient(from 120deg, var(--ki-orange), var(--ki-rot), var(--ki-pink), var(--ki-orange), var(--ki-lila), var(--ki-rot), var(--ki-orange));
+  opacity: 0;
+  transition-duration: 0.25s;
+}
+
+/* -------------------------------------------------------- grüne Kante -- */
+/* Erkennung: klare grüne Kante ohne Verlauf, wird mit dem Fortschritt breiter.
+   Eine Farbe, scharfe runde Innenkante (Maske aus overlay.ts), Ecken voll. */
+#kante {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: var(--gruen);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  opacity: 0;
+  transition: opacity 0.25s var(--kurve);
+}
+#kante.an { opacity: 1; }
+#kante.weg { opacity: 0; transition-duration: 0.5s; }
+/* Fertig: einmal kräftig aufblitzen — „Bim“ */
+#kante.bim { animation: bim 0.45s var(--kurve); }
+@keyframes bim {
+  0% { filter: brightness(1); }
+  35% { filter: brightness(1.45); }
+  100% { filter: brightness(1); }
+}
 
 @keyframes drehen { to { transform: rotate(-360deg); } }
 

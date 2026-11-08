@@ -21,11 +21,13 @@ pub struct Einstellungen {
     pub modus: crate::modus::Modus,
     /// Personen im Protokoll; 0 = selbst erkennen
     pub personen: i32,
+    /// Kleiner Ton, wenn der Text fertig ist
+    pub ton: bool,
 }
 
 impl Default for Einstellungen {
     fn default() -> Self {
-        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0 }
+        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0, ton: true }
     }
 }
 

@@ -77,6 +77,14 @@ fn wiederherstellen(ablauf: State<Arc<Ablauf>>, pfad: String) -> Result<(), Stri
     ablauf.inner().clone().wiederherstellen(p)
 }
 
+/// Aus dem Randfenster im Moment des Aufblitzens, damit Bild und Ton zusammenfallen
+#[tauri::command]
+fn ton_fertig(ablauf: State<Arc<Ablauf>>) {
+    if ablauf.einstellungen.lock().unwrap().ton {
+        plattform::ton_fertig();
+    }
+}
+
 #[tauri::command]
 fn kopieren(text: String) -> Result<(), String> {
     arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())
@@ -321,6 +329,7 @@ pub fn run() {
             speichern,
             wiederherstellen,
             kopieren,
+            ton_fertig,
             ordner_oeffnen,
             woerterbuch_speichern,
             freigabe_oeffnen,

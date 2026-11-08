@@ -219,6 +219,11 @@ pub fn einfuegen() {
     senden(TASTE_V, kCGEventFlagMaskCommand);
 }
 
+/// Kleiner Ton, wenn der Text fertig ist (Systemklang „Glass“, leise)
+pub fn ton_fertig() {
+    let _ = std::process::Command::new("afplay").args(["-v", "0.35", "/System/Library/Sounds/Glass.aiff"]).spawn();
+}
+
 pub fn freigabe() -> bool {
     unsafe { AXIsProcessTrusted() }
 }
