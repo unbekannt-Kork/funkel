@@ -3,7 +3,7 @@
 //! egal ob das Layout dort ^ (deutsch) oder ` (US) hat.
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetKeyNameTextW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
@@ -63,8 +63,8 @@ pub fn abgriff_starten(rueckruf: Rueckruf) -> bool {
     std::thread::Builder::new()
         .name("funkel-tastatur".into())
         .spawn(move || unsafe {
-            let modul = GetModuleHandleW(None).ok();
-            let ergebnis = SetWindowsHookExW(WH_KEYBOARD_LL, Some(haken), modul.map(Into::into), 0);
+            let modul = GetModuleHandleW(None).map(|m| HINSTANCE(m.0)).unwrap_or_default();
+            let ergebnis = SetWindowsHookExW(WH_KEYBOARD_LL, Some(haken), modul, 0);
             let _ = fertig_tx.send(ergebnis.is_ok());
             if ergebnis.is_err() {
                 return;
