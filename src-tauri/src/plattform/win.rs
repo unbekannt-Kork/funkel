@@ -113,7 +113,7 @@ pub fn einfuegen() {
 /// Kleiner Ton, wenn der Text fertig ist (Windows-Standardton)
 pub fn ton_fertig() {
     unsafe {
-        let _ = windows::Win32::UI::WindowsAndMessaging::MessageBeep(windows::Win32::UI::WindowsAndMessaging::MB_OK);
+        let _ = windows::Win32::System::Diagnostics::Debug::MessageBeep(windows::Win32::UI::WindowsAndMessaging::MB_OK);
     }
 }
 
