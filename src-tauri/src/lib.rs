@@ -1,5 +1,6 @@
 //! Funkel: zweimal eine Taste tippen, sprechen, einmal tippen — der Text liegt
 //! in der Zwischenablage. Erkennung offline mit Whisper.
+mod ablage;
 mod ablauf;
 mod aufnahme;
 mod ausloeser;
@@ -22,6 +23,7 @@ use einstellungen::{protokoll, Einstellungen};
 
 #[derive(Serialize)]
 struct Status {
+    verlauf: Vec<ablage::Eintrag>,
     einstellungen: Einstellungen,
     taste_name: String,
     freigabe: bool,
@@ -36,7 +38,11 @@ fn aktuelle_taste(werte: &Einstellungen) -> u32 {
 #[tauri::command]
 fn status(ablauf: State<Arc<Ablauf>>) -> Status {
     let werte = ablauf.einstellungen.lock().unwrap().clone();
+    let laufende = ablauf.laufende();
+    let mut verlauf = ablage::eintraege(laufende.as_deref());
+    verlauf.truncate(30);
     Status {
+        verlauf,
         taste_name: plattform::tasten_name(aktuelle_taste(&werte)),
         freigabe: plattform::freigabe() && plattform::abgriff_wach_halten(),
         modell: modell::vorhanden(),
@@ -52,6 +58,31 @@ fn speichern(app: AppHandle, ablauf: State<Arc<Ablauf>>, einstellungen: Einstell
     ausloeser::taste_setzen(aktuelle_taste(&einstellungen));
     *ablauf.einstellungen.lock().unwrap() = einstellungen;
     Ok(())
+}
+
+#[tauri::command]
+fn wiederherstellen(ablauf: State<Arc<Ablauf>>, pfad: String) -> Result<(), String> {
+    // Nur Dateien aus dem eigenen Ordner
+    let p = std::path::PathBuf::from(&pfad);
+    if !p.starts_with(ablage::ordner()) {
+        return Err("Unbekannte Datei".into());
+    }
+    ablauf.inner().clone().wiederherstellen(p)
+}
+
+#[tauri::command]
+fn kopieren(text: String) -> Result<(), String> {
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ordner_oeffnen() {
+    let ordner = ablage::ordner();
+    let _ = std::fs::create_dir_all(&ordner);
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(&ordner).spawn();
+    #[cfg(windows)]
+    let _ = std::process::Command::new("explorer").arg(&ordner).spawn();
 }
 
 #[tauri::command]
@@ -146,6 +177,11 @@ pub fn run() {
 
             let handle = app.handle().clone();
             let werte = einstellungen::laden();
+            let weg = ablage::aufraeumen(werte.aufbewahren_tage);
+            if weg > 0 {
+                protokoll(&format!("{weg} alte Aufnahme(n) nach {} Tagen gelöscht", werte.aufbewahren_tage));
+            }
+            let liegen = ablage::unfertige(None);
             let ablauf = Ablauf::neu(handle.clone(), werte.clone());
             app.manage(ablauf.clone());
 
@@ -181,7 +217,10 @@ pub fn run() {
                     }
                 });
             }
-            if !abgriff || !modell::vorhanden() {
+            if !liegen.is_empty() {
+                protokoll(&format!("{} Aufnahme(n) nicht fertig, zuletzt {}", liegen.len(), ablage::kurz(&liegen[0])));
+            }
+            if !abgriff || !modell::vorhanden() || !liegen.is_empty() {
                 if !abgriff {
                     plattform::freigabe_anfragen();
                 }
@@ -200,6 +239,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             status,
             speichern,
+            wiederherstellen,
+            kopieren,
+            ordner_oeffnen,
             woerterbuch_speichern,
             freigabe_oeffnen,
             taste_lernen,

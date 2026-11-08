@@ -1060,6 +1060,7 @@ name = "funkel"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "chrono",
  "core-foundation",
  "cpal",
  "dirs 5.0.1",

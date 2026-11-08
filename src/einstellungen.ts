@@ -6,13 +6,16 @@ type Einstellungen = {
   einfuegen: boolean;
   sprache: string;
   autostart: boolean;
+  aufbewahren_tage: number;
 };
+type Eintrag = { pfad: string; zeit: string; sekunden: number; text: string | null };
 type Status = {
   einstellungen: Einstellungen;
   taste_name: string;
   freigabe: boolean;
   modell: boolean;
   woerterbuch: string;
+  verlauf: Eintrag[];
 };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -37,17 +40,71 @@ async function laden() {
   $<HTMLInputElement>("einfuegen").checked = werte.einfuegen;
   $<HTMLSelectElement>("sprache").value = werte.sprache;
   $<HTMLInputElement>("autostart").checked = werte.autostart;
-  $<HTMLTextAreaElement>("woerterbuch").value = s.woerterbuch;
+  // Nicht überschreiben, während jemand tippt
+  if (document.activeElement?.id !== "woerterbuch") $<HTMLTextAreaElement>("woerterbuch").value = s.woerterbuch;
+  $<HTMLSelectElement>("aufbewahren").value = String(werte.aufbewahren_tage);
+  verlaufZeigen(s.verlauf);
+}
+
+function dauer(s: number) {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function eintrag(e: Eintrag, knopf: string, tun: (b: HTMLButtonElement) => void) {
+  const zeile = document.createElement("div");
+  zeile.className = "eintrag";
+  const wann = document.createElement("span");
+  wann.className = "wann";
+  wann.textContent = `${e.zeit} · ${dauer(e.sekunden)}`;
+  const inhalt = document.createElement("span");
+  inhalt.className = "inhalt";
+  inhalt.textContent = e.text ?? "Aufnahme ohne Text — nach Absturz oder Abbruch";
+  const b = document.createElement("button");
+  b.textContent = knopf;
+  b.addEventListener("click", () => tun(b));
+  zeile.append(wann, inhalt, b);
+  return zeile;
+}
+
+let letzterVerlauf = "";
+function verlaufZeigen(liste: Eintrag[]) {
+  const schluessel = JSON.stringify(liste);
+  if (schluessel === letzterVerlauf) return;
+  letzterVerlauf = schluessel;
+  const liegen = liste.filter((e) => e.text === null && e.sekunden > 0);
+  $("liegen-teil").hidden = liegen.length === 0;
+  $("liegen").replaceChildren(
+    ...liegen.map((e) =>
+      eintrag(e, "Wiederherstellen", (b) => {
+        b.disabled = true;
+        b.textContent = "erkennt …";
+        invoke("wiederherstellen", { pfad: e.pfad }).catch((f) => (b.textContent = String(f)));
+      }),
+    ),
+  );
+  const fertige = liste.filter((e) => e.text);
+  if (fertige.length)
+    $("verlauf").replaceChildren(
+      ...fertige.map((e) =>
+        eintrag(e, "Kopieren", (b) => {
+          invoke("kopieren", { text: e.text });
+          b.textContent = "kopiert";
+          setTimeout(() => (b.textContent = "Kopieren"), 1500);
+        }),
+      ),
+    );
 }
 
 async function speichern() {
   werte.einfuegen = $<HTMLInputElement>("einfuegen").checked;
   werte.sprache = $<HTMLSelectElement>("sprache").value;
   werte.autostart = $<HTMLInputElement>("autostart").checked;
+  werte.aufbewahren_tage = Number($<HTMLSelectElement>("aufbewahren").value);
   await invoke("speichern", { einstellungen: werte });
 }
 
-for (const id of ["einfuegen", "sprache", "autostart"]) $(id).addEventListener("change", speichern);
+$("ordner-knopf").addEventListener("click", () => invoke("ordner_oeffnen"));
+for (const id of ["einfuegen", "sprache", "autostart", "aufbewahren"]) $(id).addEventListener("change", speichern);
 $("woerterbuch").addEventListener("change", () =>
   invoke("woerterbuch_speichern", { text: $<HTMLTextAreaElement>("woerterbuch").value }),
 );

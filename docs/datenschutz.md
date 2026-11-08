@@ -4,8 +4,8 @@ Funkel verarbeitet Sprache ausschließlich auf dem Rechner, auf dem es läuft.
 
 | Daten | Zweck | Wo | Wie lange |
 |---|---|---|---|
-| Ton vom Mikrofon | Text erkennen | nur im Arbeitsspeicher | bis die Erkennung fertig ist, dann verworfen; nie auf der Platte |
-| erkannter Text | einfügen | Zwischenablage des Systems | bis etwas anderes kopiert wird; Funkel speichert keinen Verlauf |
+| Ton vom Mikrofon | Text erkennen, nach Absturz wiederherstellen, später neu umwandeln | `…/funkel/aufnahmen/*.wav`, nur auf diesem Rechner | einstellbar, Standard 7 Tage, dann automatisch gelöscht |
+| erkannter Text | einfügen, Verlauf | Zwischenablage und `…/funkel/aufnahmen/*.txt` | wie der Ton |
 | Einstellungen, Wörterbuch | Bedienung | Konfigurationsordner (`…/funkel/`) | bis zum Löschen durch die Person |
 | Protokoll (`funkel.log`) | Fehler finden | Datenordner (`…/funkel/`) | wächst mit; enthält nur Abläufe und Zeiten, **nie Text oder Ton** |
 

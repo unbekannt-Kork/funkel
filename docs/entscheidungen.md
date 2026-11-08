@@ -15,3 +15,4 @@
 | 08.11.2026 | Kein Textverlauf, Ton nie auf Platte | Datensparsamkeit (Art. 5 Abs. 1 lit. c DSGVO) |
 | 08.11.2026 | MIT-Lizenz, Repo öffentlich | so gewünscht; Whisper und whisper.cpp stehen ebenfalls unter MIT |
 | 08.11.2026 | Noch ohne Signatur (Apple, Windows) | kostet Geld (Apple 99 USD/Jahr), Entscheidung steht aus; bis dahin Hinweis im README |
+| 08.11.2026 | Ton läuft während der Aufnahme auf die Platte, Text daneben, 7 Tage | keine Zeitgrenze, nichts geht bei Absturz verloren, Grundlage für späteres Umwandeln in andere Modi; ersetzt „kein Verlauf“ |

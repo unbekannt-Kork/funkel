@@ -27,6 +27,12 @@ section h2 + .zeile { border-top: 0; }
 .marke { width: 10px; height: 10px; border-radius: 5px; background: var(--fehlt); flex: none; }
 .marke.gut { background: var(--gut); }
 button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--linie); background: var(--akzent); color: #fff; cursor: pointer; }
+button.leicht { background: transparent; color: var(--akzent); }
+.eintrag { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--linie); }
+#verlauf .eintrag:first-child, #liegen .eintrag:first-child { border-top: 0; }
+.eintrag .wann { flex: none; width: 92px; color: var(--leise); font-variant-numeric: tabular-nums; }
+.eintrag .inhalt { flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.eintrag button { flex: none; padding: 4px 10px; }
 button:disabled { opacity: 0.5; cursor: default; }
 kbd { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 8px; border: 1px solid var(--linie); border-radius: 4px; }
 select, textarea { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--linie); background: var(--grund); color: var(--text); }

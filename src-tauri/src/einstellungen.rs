@@ -15,11 +15,13 @@ pub struct Einstellungen {
     pub autostart: bool,
     /// Zeitfenster für den Doppeltipp
     pub doppeltipp_ms: u64,
+    /// Ton und Text so viele Tage behalten (0 = für immer)
+    pub aufbewahren_tage: u32,
 }
 
 impl Default for Einstellungen {
     fn default() -> Self {
-        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550 }
+        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7 }
     }
 }
 

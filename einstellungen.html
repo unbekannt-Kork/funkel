@@ -13,6 +13,11 @@
       <p class="leise">Zweimal die Taste tippen, sprechen, einmal tippen. Der Text liegt in der Zwischenablage. Alles bleibt auf diesem Rechner.</p>
     </header>
 
+    <section id="liegen-teil" hidden>
+      <h2>Nicht fertig</h2>
+      <div id="liegen"></div>
+    </section>
+
     <section>
       <h2>Bereit?</h2>
       <div class="zeile" id="zeile-freigabe">
@@ -56,6 +61,21 @@
         <div class="text"><strong>Wörterbuch</strong><span class="leise">ein Begriff je Zeile, so geschrieben, wie er im Text stehen soll</span></div>
         <textarea id="woerterbuch" rows="4" spellcheck="false" placeholder="Supabase&#10;Tauri"></textarea>
       </div>
+    </section>
+
+    <section>
+      <h2>Verlauf</h2>
+      <div id="verlauf"><p class="leise zeile">Noch keine Diktate.</p></div>
+      <label class="zeile">
+        <div class="text"><strong>Aufbewahren</strong><span class="leise">Ton und Text, nur auf diesem Rechner</span></div>
+        <select id="aufbewahren">
+          <option value="1">1 Tag</option>
+          <option value="7">7 Tage</option>
+          <option value="30">30 Tage</option>
+          <option value="0">immer</option>
+        </select>
+      </label>
+      <div class="zeile"><div class="text"></div><button id="ordner-knopf" class="leicht">Ordner öffnen</button></div>
     </section>
 
     <section>

@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use crate::aufnahme::{self, Aufnahme};
 use crate::einstellungen::{self, protokoll, Einstellungen};
 use crate::erkennung::Erkenner;
-use crate::{modell, overlay, plattform};
+use crate::{ablage, modell, overlay, plattform};
 
 /// Kürzer ist ein versehentlicher Doppeltipp, kein Diktat
 const MINDESTDAUER: Duration = Duration::from_millis(400);
@@ -62,7 +62,7 @@ impl Ablauf {
         overlay::sicherstellen(&self.app);
         let feld = overlay::feld_fenster(&self.app);
         *self.feld.lock().unwrap() = feld.clone();
-        match Aufnahme::starten() {
+        match Aufnahme::starten(ablage::neue_aufnahme()) {
             Ok(a) => {
                 *self.aufnahme.lock().unwrap() = Some((a, Instant::now()));
                 *self.phase.lock().unwrap() = Phase::Hoert;
@@ -91,20 +91,48 @@ impl Ablauf {
         self.laeuft.store(false, Ordering::SeqCst);
         let feld = self.feld.lock().unwrap().clone();
         if seit.elapsed() < MINDESTDAUER {
-            aufnahme.stoppen();
+            let pfad = aufnahme.pfad.clone();
+            let _ = aufnahme.stoppen();
+            let _ = ablage::text_speichern(&pfad, ""); // versehentlich, nicht wiederherstellen
             self.zurueck();
             overlay::senden(&self.app, &feld, |_| json!({ "phase": "aus" }));
             return;
         }
         overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.0 }));
         let ich = self.clone();
-        std::thread::spawn(move || ich.erkennen(aufnahme, feld));
+        std::thread::spawn(move || {
+            let pfad = aufnahme.pfad.clone();
+            match aufnahme.stoppen() {
+                Ok(ton) => ich.erkennen(ton, &pfad, feld),
+                Err(e) => ich.fehler(&format!("Aufnahme: {e} — der Ton liegt in {}", pfad.display())),
+            }
+        });
     }
 
-    fn erkennen(self: &Arc<Self>, aufnahme: Aufnahme, feld: String) {
-        let ton = aufnahme.stoppen();
+    /// Eine liegengebliebene Aufnahme (Absturz, Abbruch) nachträglich erkennen.
+    pub fn wiederherstellen(self: &Arc<Self>, pfad: std::path::PathBuf) -> Result<(), String> {
+        {
+            let mut phase = self.phase.lock().unwrap();
+            if *phase != Phase::Bereit {
+                return Err("Gerade läuft ein Diktat".into());
+            }
+            *phase = Phase::Erkennt;
+        }
+        let ton = ablage::wav_lesen(&pfad).map_err(|e| e.to_string())?;
+        overlay::sicherstellen(&self.app);
+        let feld = overlay::feld_fenster(&self.app);
+        *self.feld.lock().unwrap() = feld.clone();
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.0 }));
+        protokoll(&format!("Wiederherstellen: {}", pfad.display()));
+        let ich = self.clone();
+        std::thread::spawn(move || ich.erkennen(ton, &pfad, feld));
+        Ok(())
+    }
+
+    fn erkennen(self: &Arc<Self>, ton: Vec<f32>, pfad: &std::path::Path, feld: String) {
         let sekunden = ton.len() as f32 / aufnahme::RATE as f32;
         if aufnahme::lautheit(&ton) < STILLE {
+            let _ = ablage::text_speichern(pfad, "");
             return self.fehler("Nichts gehört — Mikrofon stumm oder falsch gewählt?");
         }
         if !self.erkenner.bereit() {
@@ -125,8 +153,14 @@ impl Ablauf {
             overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
         });
         match ergebnis {
-            Ok(text) if text.is_empty() => self.fehler("Nichts erkannt"),
+            Ok(text) if text.is_empty() => {
+                let _ = ablage::text_speichern(pfad, "");
+                self.fehler("Nichts erkannt")
+            }
             Ok(text) => {
+                if let Err(e) = ablage::text_speichern(pfad, &text) {
+                    protokoll(&format!("Text nicht gespeichert: {e}"));
+                }
                 protokoll(&format!("Erkannt: {sekunden:.1} s Ton in {:.1} s", beginn.elapsed().as_secs_f32()));
                 // Nur für Prüfläufe: FUNKEL_PROBE=/pfad schreibt den Text zusätzlich dorthin
                 if let Some(probe) = std::env::var_os("FUNKEL_PROBE") {
@@ -146,6 +180,11 @@ impl Ablauf {
         }
     }
 
+    /// Die gerade laufende Aufnahme — sie ist kein Absturz.
+    pub fn laufende(&self) -> Option<std::path::PathBuf> {
+        self.aufnahme.lock().unwrap().as_ref().map(|(a, _)| a.pfad.clone())
+    }
+
     fn zurueck(&self) {
         *self.phase.lock().unwrap() = Phase::Bereit;
         self.laeuft.store(false, Ordering::SeqCst);
@@ -154,7 +193,7 @@ impl Ablauf {
     fn fehler(&self, text: &str) {
         protokoll(&format!("Fehler: {text}"));
         if let Some((a, _)) = self.aufnahme.lock().unwrap().take() {
-            a.stoppen();
+            let _ = a.stoppen();
         }
         self.zurueck();
         let feld = self.feld.lock().unwrap().clone();
