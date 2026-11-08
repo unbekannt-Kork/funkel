@@ -186,16 +186,24 @@ impl Ablauf {
         let anteil_whisper = if werte.modus.anweisung().is_some() { 0.9 } else { 1.0 };
         let rest_ab = vorab.fertig_bis.min(ton.len());
         let versatz = rest_ab as f32 / aufnahme::RATE as f32;
+        // Stille am Ende nicht an Whisper geben: dort erfindet es Schlusssätze
+        let rest_bis = (rest_ab + erkennung::sprechen_endet(&ton[rest_ab..], aufnahme::RATE as usize)).max(rest_ab);
         let stuecke_vorab = vorab.abschnitte.len();
-        let ergebnis = self
-            .erkenner
-            .erkennen(&ton[rest_ab..], &werte.sprache, &einstellungen::vorlage(&werte.sprache), move |prozent| {
+        // Weniger als 0,3 s Sprache im Rest: nichts mehr zu erkennen, nur das Vorab zählt
+        let rest_erkennen = rest_bis.saturating_sub(rest_ab) >= aufnahme::RATE as usize * 3 / 10;
+        let rest_ergebnis = if rest_erkennen {
+            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &werte.sprache, &einstellungen::vorlage(&werte.sprache), move |prozent| {
                 let anteil = prozent as f32 / 100.0 * anteil_whisper;
                 overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
             })
+        } else {
+            Ok((String::new(), Vec::new()))
+        };
+        let ergebnis = rest_ergebnis
             .map(|(_, rest)| {
                 let mut alle = vorab.abschnitte;
                 alle.extend(rest.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
+                let alle = erkennung::nachlauf_streichen(alle, &ton, aufnahme::RATE as usize);
                 (erkennung::text_aus(&alle), alle)
             });
         match ergebnis {

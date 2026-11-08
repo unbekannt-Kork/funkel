@@ -63,6 +63,7 @@ fn speichern(app: AppHandle, ablauf: State<Arc<Ablauf>>, einstellungen: Einstell
     einstellungen::speichern(&einstellungen)?;
     autostart_setzen(&app, einstellungen.autostart);
     ausloeser::taste_setzen(aktuelle_taste(&einstellungen));
+    overlay::anzeige_setzen(&einstellungen.anzeige);
     *ablauf.einstellungen.lock().unwrap() = einstellungen;
     Ok(())
 }
@@ -75,6 +76,14 @@ fn wiederherstellen(ablauf: State<Arc<Ablauf>>, pfad: String) -> Result<(), Stri
         return Err("Unbekannte Datei".into());
     }
     ablauf.inner().clone().wiederherstellen(p)
+}
+
+/// Aus dem Randfenster im Moment des Aufblitzens, damit Bild und Ton zusammenfallen
+#[tauri::command]
+fn ton_fertig(ablauf: State<Arc<Ablauf>>) {
+    if ablauf.einstellungen.lock().unwrap().ton {
+        plattform::ton_fertig();
+    }
 }
 
 #[tauri::command]
@@ -245,6 +254,7 @@ pub fn run() {
                 protokoll(&format!("{weg} alte Aufnahme(n) nach {} Tagen gelöscht", werte.aufbewahren_tage));
             }
             let liegen = ablage::unfertige(None);
+            overlay::anzeige_setzen(&werte.anzeige);
             let ablauf = Ablauf::neu(handle.clone(), werte.clone());
             app.manage(ablauf.clone());
 
@@ -321,6 +331,7 @@ pub fn run() {
             speichern,
             wiederherstellen,
             kopieren,
+            ton_fertig,
             ordner_oeffnen,
             woerterbuch_speichern,
             freigabe_oeffnen,
