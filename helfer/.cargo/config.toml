@@ -1,0 +1,4 @@
+# Windows: sherpa-onnx kommt mit statischer C-Laufzeit (/MT), llama.cpp muss dazu passen,
+# sonst scheitert das Linken (LNK2038 RuntimeLibrary MD vs MT).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
