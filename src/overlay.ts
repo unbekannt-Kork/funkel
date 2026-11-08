@@ -111,10 +111,18 @@ function feldSetzen(...klassen: string[]) {
   feld.classList.add(...klassen);
 }
 
-// Breite der Kante gleitet zum Ziel; Zeitgeber statt requestAnimationFrame (siehe feldSetzen)
-let kanteIst = KANTE_START;
-let kanteZiel = KANTE_START;
-let kanteTakt = 0;
+// Ein Fortschritt für Kante und Balken: beide gleiten im selben Takt zum Ziel,
+// sonst lief der Balken gleichmäßig und die Kante abgebremst (Louis, 08.11.2026:
+// „nicht synchronisiert, das triggert“). Zeitgeber statt requestAnimationFrame.
+let anteilIst = 0;
+let anteilZiel = 0;
+let bimZusatz = 0; // Bim: Kante kurz breiter als 100 %
+let fortschrittTakt = 0;
+
+function zeichnen() {
+  kanteMaske(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst + bimZusatz);
+  balken.style.width = `${(anteilIst * 100).toFixed(2)}%`;
+}
 
 function kanteMaske(dicke: number) {
   const b = window.innerWidth, h = window.innerHeight, d = dicke, r = 34;
@@ -130,27 +138,25 @@ function kanteMaske(dicke: number) {
   kante.style.setProperty("mask-image", m);
 }
 
-function kanteZu(ziel: number, sofort = false) {
-  kanteZiel = ziel;
+/** Fortschritt 0…1 für Kante und Balken; `sofort` springt ohne Gleiten. */
+function fortschritt(anteil: number, sofort = false) {
+  anteilZiel = Math.max(0, Math.min(1, anteil));
   if (sofort) {
-    kanteIst = ziel;
-    kanteMaske(ziel);
+    anteilIst = anteilZiel;
+    zeichnen();
     return;
   }
-  if (kanteTakt) return;
-  kanteTakt = window.setInterval(() => {
-    kanteIst += (kanteZiel - kanteIst) * 0.18;
-    if (Math.abs(kanteZiel - kanteIst) < 0.05) {
-      kanteIst = kanteZiel;
-      clearInterval(kanteTakt);
-      kanteTakt = 0;
+  if (fortschrittTakt) return;
+  // Gleichmäßig, höchstens 1,2 % je Takt: Whisper meldet in Sprüngen
+  fortschrittTakt = window.setInterval(() => {
+    const schritt = Math.sign(anteilZiel - anteilIst) * Math.min(Math.abs(anteilZiel - anteilIst), 0.012);
+    anteilIst += schritt;
+    zeichnen();
+    if (anteilIst === anteilZiel) {
+      clearInterval(fortschrittTakt);
+      fortschrittTakt = 0;
     }
-    kanteMaske(kanteIst);
   }, 16);
-}
-
-function kanteSetzen(anteil: number, sofort = false) {
-  kanteZu(KANTE_START + (KANTE_ENDE - KANTE_START) * Math.max(0, Math.min(1, anteil)), sofort);
 }
 
 function hoert(mitFeld: boolean) {
@@ -162,7 +168,8 @@ function hoert(mitFeld: boolean) {
   if (mitFeld) {
     const start = Date.now();
     uhr.textContent = "0:00";
-    balken.style.width = "0";
+    bimZusatz = 0;
+    fortschritt(0, true);
     feldSetzen("hoert");
     spaeter(20, () => feld.classList.add("an"));
     uhrTakt = window.setInterval(() => (uhr.textContent = uhrText(Date.now() - start)), 250);
@@ -177,7 +184,8 @@ function erkennt(mitFeld: boolean, anteil: number) {
     erkenntSeit = Date.now();
     // Farbschein aus, klare grüne Kante an
     rand.className = "";
-    kanteSetzen(0, true);
+    bimZusatz = 0;
+    fortschritt(0, true);
     kante.className = mitRand ? "an" : "";
     if (mitFeld) {
       if (feld.classList.contains("hoert")) {
@@ -190,8 +198,7 @@ function erkennt(mitFeld: boolean, anteil: number) {
       }
     }
   }
-  kanteSetzen(anteil);
-  if (mitFeld) balken.style.width = `${Math.round(Math.max(0, Math.min(1, anteil)) * 100)}%`;
+  fortschritt(anteil);
 }
 
 function wahlZeigen(modi: string[], aktiv: number) {
@@ -210,19 +217,21 @@ function wahlZeigen(modi: string[], aktiv: number) {
 function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
   const warten = Math.max(0, GRUEN_MINDESTENS_MS - (Date.now() - erkenntSeit));
   alleAbbrechen();
-  spaeter(warten, () => {
+  // Erst gleichmäßig bis 100 % (Balken und Kante zusammen), dann Bim
+  fortschritt(1);
+  const bisVoll = ((1 - anteilIst) / 0.012) * 16;
+  spaeter(Math.max(warten, bisVoll + 40), () => {
     // Kante ganz hoch, einmal aufblitzen mit kleinem Ton, dann weg
-    kanteSetzen(1);
+    fortschritt(1, true);
     kante.className = mitRand ? "an bim" : "";
     // Bim: kurz deutlich breiter, dann zurück
-    spaeter(60, () => kanteZu(KANTE_ENDE + 10));
-    spaeter(200, () => kanteZu(KANTE_ENDE));
+    spaeter(60, () => ((bimZusatz = 10), zeichnen()));
+    spaeter(200, () => ((bimZusatz = 0), zeichnen()));
     if (mitFeld) invoke("ton_fertig").catch(() => {});
     spaeter(BIM_MS, () => (kante.className = "weg"));
     if (!mitFeld) return;
     feld.classList.remove("erkennt", "balken-da", "hoert");
     feld.classList.add("an", "fertig");
-    balken.style.width = "100%";
     spaeter(180, () => feld.classList.add("zusammen"));
     if (modi.length) {
       wahlZeigen(modi, aktiv);
@@ -277,7 +286,9 @@ if (vorschau) {
   }
   if (zustand === "bim") {
     erkennt(true, 1);
-    kanteZu(KANTE_ENDE + 10, true);
+    fortschritt(1, true);
+    bimZusatz = 10;
+    zeichnen();
   }
 }
 
