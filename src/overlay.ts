@@ -118,6 +118,18 @@ let anteilIst = 0;
 let anteilZiel = 0;
 let bimZusatz = 0; // Bim: Kante kurz breiter als 100 %
 let fortschrittTakt = 0;
+// Whisper meldet nur am Anfang jedes 30-s-Fensters; der Rest nach dem Stopp ist kürzer,
+// also kam 0 % und nach 1,4 s 100 % — der Balken stand so lange (Louis, 09.11.2026:
+// „komische Pause“). Während der Erkennung läuft er darum selbst weiter, erst zügig,
+// dann langsamer, nie ganz voll; echte Meldungen schieben ihn nur nach vorn.
+const SCHAETZUNG_BIS = 0.95;
+const SCHAETZUNG_MS = 1200; // nach 1,4 s etwa zwei Drittel
+let schaetzenSeit = 0; // 0 = keine Schätzung
+
+function schaetzung() {
+  if (!schaetzenSeit) return 0;
+  return SCHAETZUNG_BIS * (1 - Math.exp(-(Date.now() - schaetzenSeit) / SCHAETZUNG_MS));
+}
 
 function zeichnen() {
   kanteMaske(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst + bimZusatz);
@@ -149,10 +161,12 @@ function fortschritt(anteil: number, sofort = false) {
   if (fortschrittTakt) return;
   // Gleichmäßig, höchstens 1,2 % je Takt: Whisper meldet in Sprüngen
   fortschrittTakt = window.setInterval(() => {
-    const schritt = Math.sign(anteilZiel - anteilIst) * Math.min(Math.abs(anteilZiel - anteilIst), 0.012);
+    // Während der Schätzung nie rückwärts, auch wenn Whisper danach noch 0 % meldet
+    const ziel = Math.max(anteilZiel, schaetzung(), schaetzenSeit ? anteilIst : 0);
+    const schritt = Math.sign(ziel - anteilIst) * Math.min(Math.abs(ziel - anteilIst), 0.012);
     anteilIst += schritt;
     zeichnen();
-    if (anteilIst === anteilZiel) {
+    if (anteilIst === ziel && !schaetzenSeit) {
       clearInterval(fortschrittTakt);
       fortschrittTakt = 0;
     }
@@ -161,6 +175,7 @@ function fortschritt(anteil: number, sofort = false) {
 
 function hoert(mitFeld: boolean) {
   alleAbbrechen();
+  schaetzenSeit = 0;
   kante.className = "";
   rand.className = mitRand ? "an" : "";
   zeigeStufe("breit");
@@ -186,6 +201,7 @@ function erkennt(mitFeld: boolean, anteil: number) {
     rand.className = "";
     bimZusatz = 0;
     fortschritt(0, true);
+    schaetzenSeit = Date.now();
     kante.className = mitRand ? "an" : "";
     if (mitFeld) {
       if (feld.classList.contains("hoert")) {
@@ -217,6 +233,7 @@ function wahlZeigen(modi: string[], aktiv: number) {
 function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
   const warten = Math.max(0, GRUEN_MINDESTENS_MS - (Date.now() - erkenntSeit));
   alleAbbrechen();
+  schaetzenSeit = 0;
   // Erst gleichmäßig bis 100 % (Balken und Kante zusammen), dann Bim
   fortschritt(1);
   const bisVoll = ((1 - anteilIst) / 0.012) * 16;
@@ -245,6 +262,7 @@ function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
 
 function aus() {
   alleAbbrechen();
+  schaetzenSeit = 0;
   rand.className = "";
   kante.className = "";
   feld.classList.replace("an", "weg");
@@ -252,6 +270,7 @@ function aus() {
 
 function fehler(mitFeld: boolean, text: string) {
   alleAbbrechen();
+  schaetzenSeit = 0;
   rand.className = "";
   kante.className = "";
   if (!mitFeld) return;
