@@ -35,3 +35,8 @@
 | 09.11.2026 | Bei Sprache „automatisch“ wird die Sprache während der Aufnahme bestimmt (ab 2 s Ton, nur bei ≥ 80 % Sicherheit, höchstens drei Versuche) | die automatische Erkennung im Rest verdoppelte die Wartezeit nach dem Stopp: 1,32–1,61 s statt 0,66–0,83 s (gemessen, gleicher Text) |
 | 09.11.2026 | Kein verkürztes Tonfenster (`audio_ctx`) | gemessen: verfälschte Wörter („Nagen“ statt „Morgen“) und Absturz; Flash-Attention brachte nur 0,05 s |
 | 09.11.2026 | Balken und Kante laufen linear an einer Uhr über die erwartete Dauer aus Rust; kein Aufblitzen, kein Nachziehen am Ende | Louis: „gleichmäßig und sauber durchlaufen“; ersetzt die Schätzung vom selben Tag. Zurückspringen kam von `erkennt()`, das bei jeder Meldung neu startete |
+| 09.11.2026 | Neues Logo: dunkle Kachel, scharfer Farbrahmen, roter Punkt; in der Menüleiste einfarbige Vorlage (Mac) | Louis: altes Logo „eine Katastrophe“; der verschwommene Ring war in der Menüleiste ein Farbfleck |
+| 09.11.2026 | Klick auf das Menüleisten-Symbol öffnet Funkel, Rechtsklick das Menü | Louis will „oben draufklicken“ können |
+| 09.11.2026 | Einstellungen im Aufbau der macOS-Systemeinstellungen: Gruppentitel über der Karte, gleich hohe Zeilen, einheitliche Feldbreite, Schalter | Louis: „Spacing … total beschissen“ |
+| 09.11.2026 | 26 Sprachen; Füllwort-Vorlage nur für Deutsch/Englisch | mehr Sprachen gewünscht; deutsche Füllwörter in der Vorlage hätten andere Sprachen Richtung Deutsch gezogen |
+| 09.11.2026 | Modus-Auswahl steht nach dem Einfügen 8 s statt 4,5 s | Louis: soll nach dem Einfügen „nicht direkt verpissen“; jede andere Taste beendet die Wahl weiterhin |

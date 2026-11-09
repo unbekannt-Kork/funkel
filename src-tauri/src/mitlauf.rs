@@ -63,7 +63,7 @@ pub fn leiseste_stelle(ton: &[f32], von: usize, bis: usize) -> usize {
 }
 
 impl Mitlauf {
-    pub fn starten(pfad: PathBuf, erkenner: Arc<Erkenner>, sprache: String, vorlage: String) -> Self {
+    pub fn starten(pfad: PathBuf, erkenner: Arc<Erkenner>, sprache: String) -> Self {
         let stopp = Arc::new(AtomicBool::new(false));
         let halt = stopp.clone();
         let faden = std::thread::spawn(move || {
@@ -89,7 +89,7 @@ impl Mitlauf {
                 }
                 let schnitt = leiseste_stelle(&neu, STUECK_S * RATE as usize, noetig);
                 let versatz = vorab.fertig_bis as f32 / RATE as f32;
-                match erkenner.erkennen(&neu[..schnitt], sprache, &vorlage) {
+                match erkenner.erkennen(&neu[..schnitt], sprache, &crate::einstellungen::vorlage(sprache)) {
                     Ok((_, abschnitte)) => {
                         vorab.abschnitte.extend(abschnitte.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
                         vorab.fertig_bis += schnitt;
@@ -142,7 +142,7 @@ mod tests {
         // Wachsende Datei, etwa 4-mal so schnell wie Sprechen
         let ziel = std::env::temp_dir().join(format!("funkel-mitlauf-{}.wav", std::process::id()));
         let mut datei = crate::ablage::wav_anlegen(&ziel).unwrap();
-        let m = Mitlauf::starten(ziel.clone(), e.clone(), "de".into(), vorlage.clone());
+        let m = Mitlauf::starten(ziel.clone(), e.clone(), "de".into());
         for stueck in ton.chunks(RATE as usize) {
             crate::ablage::wav_anhaengen(&mut datei, stueck).unwrap();
             std::thread::sleep(Duration::from_millis(250));
