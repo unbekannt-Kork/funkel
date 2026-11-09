@@ -91,13 +91,6 @@ html, body {
 }
 #kante.an { opacity: 1; }
 #kante.weg { opacity: 0; transition-duration: 0.5s; }
-/* Fertig: einmal kräftig aufblitzen — „Bim“ */
-#kante.bim { animation: bim 0.45s var(--kurve); }
-@keyframes bim {
-  0% { filter: brightness(1); }
-  35% { filter: brightness(1.45); }
-  100% { filter: brightness(1); }
-}
 
 @keyframes drehen { to { transform: rotate(-360deg); } }
 

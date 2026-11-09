@@ -5,7 +5,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 type Zustand =
   | { phase: "hoert"; feld: boolean }
   | { phase: "pegel"; wert: number }
-  | { phase: "erkennt"; feld: boolean; anteil: number }
+  | { phase: "erkennt"; feld: boolean; dauer: number }
   | { phase: "fertig"; feld: boolean; modi: string[]; aktiv: number }
   | { phase: "aus" }
   | { phase: "fehler"; feld: boolean; text: string };
@@ -16,8 +16,7 @@ const STUFEN = { schmal: [7, 12], breit: [11, 18] } as const;
 type Stufe = keyof typeof STUFEN;
 const RADIUS = 40;
 const ANLAUF_MS = 1300; // Start: kurz breit, dann schmal im Hintergrund
-const GRUEN_MINDESTENS_MS = 900; // die Erkennung ist oft schneller — so lange bleibt Grün sichtbar
-const BIM_MS = 450;
+const KANTE_STEHT_MS = 250; // voll und grün kurz stehen lassen, dann ausblenden
 // Grüne Kante: Breite in Pixeln, wächst mit dem Fortschritt
 const KANTE_START = 3;
 const KANTE_ENDE = 14;
@@ -96,7 +95,6 @@ function alleAbbrechen() {
 let uhrTakt = 0;
 // Einstellung „Anzeige“: false = nur das Feld, kein Rahmen
 let mitRand = true;
-let erkenntSeit = 0;
 
 function uhrText(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -111,29 +109,60 @@ function feldSetzen(...klassen: string[]) {
   feld.classList.add(...klassen);
 }
 
-// Ein Fortschritt für Kante und Balken: beide gleiten im selben Takt zum Ziel,
-// sonst lief der Balken gleichmäßig und die Kante abgebremst (Louis, 08.11.2026:
-// „nicht synchronisiert, das triggert“). Zeitgeber statt requestAnimationFrame.
+// Ein Fortschritt für Kante und Balken, an einer Uhr: beide laufen linear von 0 bis
+// 100 % (Louis, 09.11.2026: „gleichmäßig und sauber durchlaufen“, nicht langsam
+// anfangen, nicht zurückspringen). Rust schickt die erwartete Dauer; wird die
+// Erkennung früher fertig, läuft der Balken im selben Tempo zu Ende, dauert sie
+// länger, wartet er kurz vor dem Ende. Zeitgeber statt requestAnimationFrame.
+const HALT_VOR_ENDE = 0.97;
 let anteilIst = 0;
-let anteilZiel = 0;
-let bimZusatz = 0; // Bim: Kante kurz breiter als 100 %
-let fortschrittTakt = 0;
-// Whisper meldet nur am Anfang jedes 30-s-Fensters; der Rest nach dem Stopp ist kürzer,
-// also kam 0 % und nach 1,4 s 100 % — der Balken stand so lange (Louis, 09.11.2026:
-// „komische Pause“). Während der Erkennung läuft er darum selbst weiter, erst zügig,
-// dann langsamer, nie ganz voll; echte Meldungen schieben ihn nur nach vorn.
-const SCHAETZUNG_BIS = 0.95;
-const SCHAETZUNG_MS = 1200; // nach 1,4 s etwa zwei Drittel
-let schaetzenSeit = 0; // 0 = keine Schätzung
-
-function schaetzung() {
-  if (!schaetzenSeit) return 0;
-  return SCHAETZUNG_BIS * (1 - Math.exp(-(Date.now() - schaetzenSeit) / SCHAETZUNG_MS));
-}
+let laufStart = 0;
+let laufDauer = 1;
+let laufFertig = false;
+let laufTakt = 0;
+let wennVoll: (() => void) | null = null;
 
 function zeichnen() {
-  kanteMaske(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst + bimZusatz);
+  kanteMaske(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst);
   balken.style.width = `${(anteilIst * 100).toFixed(2)}%`;
+}
+
+function laufAnhalten() {
+  if (laufTakt) clearInterval(laufTakt);
+  laufTakt = 0;
+  wennVoll = null;
+}
+
+function laufen(dauerMs: number) {
+  laufAnhalten();
+  anteilIst = 0;
+  laufStart = Date.now();
+  laufDauer = Math.max(dauerMs, 1);
+  laufFertig = false;
+  zeichnen();
+  laufTakt = window.setInterval(() => {
+    const a = (Date.now() - laufStart) / laufDauer;
+    anteilIst = Math.min(a, laufFertig ? 1 : HALT_VOR_ENDE);
+    zeichnen();
+    if (anteilIst >= 1) {
+      const danach = wennVoll;
+      laufAnhalten();
+      danach?.();
+    }
+  }, 16);
+}
+
+/** Erkennung fertig: im selben Tempo bis 100 %, dann `danach`. */
+function laufBeenden(danach: () => void) {
+  if (!laufTakt) {
+    anteilIst = 1;
+    zeichnen();
+    return danach();
+  }
+  // Uhr so stellen, dass es ohne Sprung vom jetzigen Stand weitergeht
+  laufStart = Date.now() - anteilIst * laufDauer;
+  laufFertig = true;
+  wennVoll = danach;
 }
 
 function kanteMaske(dicke: number) {
@@ -150,32 +179,10 @@ function kanteMaske(dicke: number) {
   kante.style.setProperty("mask-image", m);
 }
 
-/** Fortschritt 0…1 für Kante und Balken; `sofort` springt ohne Gleiten. */
-function fortschritt(anteil: number, sofort = false) {
-  anteilZiel = Math.max(0, Math.min(1, anteil));
-  if (sofort) {
-    anteilIst = anteilZiel;
-    zeichnen();
-    return;
-  }
-  if (fortschrittTakt) return;
-  // Gleichmäßig, höchstens 1,2 % je Takt: Whisper meldet in Sprüngen
-  fortschrittTakt = window.setInterval(() => {
-    // Während der Schätzung nie rückwärts, auch wenn Whisper danach noch 0 % meldet
-    const ziel = Math.max(anteilZiel, schaetzung(), schaetzenSeit ? anteilIst : 0);
-    const schritt = Math.sign(ziel - anteilIst) * Math.min(Math.abs(ziel - anteilIst), 0.012);
-    anteilIst += schritt;
-    zeichnen();
-    if (anteilIst === ziel && !schaetzenSeit) {
-      clearInterval(fortschrittTakt);
-      fortschrittTakt = 0;
-    }
-  }, 16);
-}
-
 function hoert(mitFeld: boolean) {
   alleAbbrechen();
-  schaetzenSeit = 0;
+  laufAnhalten();
+  erkenntLaeuft = false;
   kante.className = "";
   rand.className = mitRand ? "an" : "";
   zeigeStufe("breit");
@@ -183,8 +190,8 @@ function hoert(mitFeld: boolean) {
   if (mitFeld) {
     const start = Date.now();
     uhr.textContent = "0:00";
-    bimZusatz = 0;
-    fortschritt(0, true);
+    anteilIst = 0;
+    zeichnen();
     feldSetzen("hoert");
     spaeter(20, () => feld.classList.add("an"));
     uhrTakt = window.setInterval(() => (uhr.textContent = uhrText(Date.now() - start)), 250);
@@ -193,28 +200,27 @@ function hoert(mitFeld: boolean) {
   }
 }
 
-function erkennt(mitFeld: boolean, anteil: number) {
-  if (!rand.classList.contains("erkennt")) {
-    alleAbbrechen();
-    erkenntSeit = Date.now();
-    // Farbschein aus, klare grüne Kante an
-    rand.className = "";
-    bimZusatz = 0;
-    fortschritt(0, true);
-    schaetzenSeit = Date.now();
-    kante.className = mitRand ? "an" : "";
-    if (mitFeld) {
-      if (feld.classList.contains("hoert")) {
-        feld.classList.remove("hoert");
-        feld.classList.add("an", "erkennt");
-        spaeter(420, () => feld.classList.add("balken-da"));
-      } else {
-        // Umwandeln aus der Schnellwahl: gleich wieder der Balken
-        feldSetzen("an", "erkennt", "balken-da");
-      }
+let erkenntLaeuft = false;
+
+function erkennt(mitFeld: boolean, dauer: number) {
+  // Nur der erste Aufruf startet; ein zweiter darf den Lauf nicht zurücksetzen
+  if (erkenntLaeuft) return;
+  erkenntLaeuft = true;
+  alleAbbrechen();
+  // Farbschein aus, klare grüne Kante an
+  rand.className = "";
+  kante.className = mitRand ? "an" : "";
+  laufen(dauer);
+  if (mitFeld) {
+    if (feld.classList.contains("hoert")) {
+      feld.classList.remove("hoert");
+      feld.classList.add("an", "erkennt");
+      spaeter(420, () => feld.classList.add("balken-da"));
+    } else {
+      // Umwandeln aus der Schnellwahl: gleich wieder der Balken
+      feldSetzen("an", "erkennt", "balken-da");
     }
   }
-  fortschritt(anteil);
 }
 
 function wahlZeigen(modi: string[], aktiv: number) {
@@ -231,21 +237,12 @@ function wahlZeigen(modi: string[], aktiv: number) {
 }
 
 function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
-  const warten = Math.max(0, GRUEN_MINDESTENS_MS - (Date.now() - erkenntSeit));
+  erkenntLaeuft = false;
   alleAbbrechen();
-  schaetzenSeit = 0;
-  // Erst gleichmäßig bis 100 % (Balken und Kante zusammen), dann Bim
-  fortschritt(1);
-  const bisVoll = ((1 - anteilIst) / 0.012) * 16;
-  spaeter(Math.max(warten, bisVoll + 40), () => {
-    // Kante ganz hoch, einmal aufblitzen mit kleinem Ton, dann weg
-    fortschritt(1, true);
-    kante.className = mitRand ? "an bim" : "";
-    // Bim: kurz deutlich breiter, dann zurück
-    spaeter(60, () => ((bimZusatz = 10), zeichnen()));
-    spaeter(200, () => ((bimZusatz = 0), zeichnen()));
+  // Balken und Kante laufen gleichmäßig voll, dann ist die Kante breit und grün und blendet aus
+  laufBeenden(() => {
     if (mitFeld) invoke("ton_fertig").catch(() => {});
-    spaeter(BIM_MS, () => (kante.className = "weg"));
+    spaeter(KANTE_STEHT_MS, () => (kante.className = mitRand ? "weg" : ""));
     if (!mitFeld) return;
     feld.classList.remove("erkennt", "balken-da", "hoert");
     feld.classList.add("an", "fertig");
@@ -262,7 +259,8 @@ function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
 
 function aus() {
   alleAbbrechen();
-  schaetzenSeit = 0;
+  laufAnhalten();
+  erkenntLaeuft = false;
   rand.className = "";
   kante.className = "";
   feld.classList.replace("an", "weg");
@@ -270,7 +268,8 @@ function aus() {
 
 function fehler(mitFeld: boolean, text: string) {
   alleAbbrechen();
-  schaetzenSeit = 0;
+  laufAnhalten();
+  erkenntLaeuft = false;
   rand.className = "";
   kante.className = "";
   if (!mitFeld) return;
@@ -284,7 +283,7 @@ bauen();
 window.addEventListener("resize", bauen);
 
 // Vorschau ohne Tauri, zum Prüfen in einem unsichtbaren Fenster:
-// overlay.html#vorschau=hoert | erkennt-0.4 | bim
+// overlay.html#vorschau=hoert | erkennt-0.4 | wahl-1
 const vorschau = location.hash.match(/^#vorschau=(\w+)(?:-([\d.]+))?/);
 if (vorschau) {
   document.body.style.background = "#1c1c22"; // nur zum Ansehen
@@ -296,18 +295,14 @@ if (vorschau) {
   if (zustand === "hoert") hoert(true);
   if (zustand === "erkennt") {
     hoert(true);
-    erkennt(true, Number(wert ?? 0));
-    erkennt(true, Number(wert ?? 0));
+    erkennt(true, 1000);
+    laufAnhalten();
+    anteilIst = Number(wert ?? 0);
+    zeichnen();
   }
   if (zustand === "wahl") {
     wahlZeigen(["Wortgetreu", "Bereinigt", "Mail", "WhatsApp", "Protokoll"], Number(wert ?? 0));
     feldSetzen("an", "fertig", "zusammen", "wahl");
-  }
-  if (zustand === "bim") {
-    erkennt(true, 1);
-    fortschritt(1, true);
-    bimZusatz = 10;
-    zeichnen();
   }
 }
 
@@ -318,7 +313,7 @@ if (!vorschau) getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: 
   switch (z.phase) {
     case "hoert": return hoert(z.feld);
     case "pegel": return warme.forEach((w) => (w.style.opacity = String(z.wert)));
-    case "erkennt": return erkennt(z.feld, z.anteil);
+    case "erkennt": return erkennt(z.feld, z.dauer);
     case "fertig": return fertig(z.feld, z.modi, z.aktiv);
     case "aus": return aus();
     case "fehler": return fehler(z.feld, z.text);
