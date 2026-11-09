@@ -23,7 +23,14 @@ pub struct Vorab {
     pub abschnitte: Vec<Abschnitt>,
     /// Bis zu diesem Abtastwert ist erkannt
     pub fertig_bis: usize,
+    /// Bei „automatisch“: schon während der Aufnahme erkannte Sprache
+    pub sprache: Option<String>,
 }
+
+/// Ab so viel Ton wird bei „automatisch“ die Sprache bestimmt; unsicher → später
+/// noch einmal mit mehr Ton, höchstens so oft
+const SPRACHE_AB_S: usize = 2;
+const SPRACHE_VERSUCHE: usize = 3;
 
 pub struct Mitlauf {
     stopp: Arc<AtomicBool>,
@@ -61,19 +68,28 @@ impl Mitlauf {
         let halt = stopp.clone();
         let faden = std::thread::spawn(move || {
             let mut vorab = Vorab::default();
+            let mut versuche = 0;
             let noetig = (STUECK_S + SUCHFENSTER_S) * RATE as usize;
             while !halt.load(Ordering::SeqCst) {
                 std::thread::sleep(TAKT);
                 if halt.load(Ordering::SeqCst) || !erkenner.bereit() {
                     continue;
                 }
+                if sprache == "auto" && vorab.sprache.is_none() && versuche < SPRACHE_VERSUCHE {
+                    let bisher = lesen_ab(&pfad, 0);
+                    if bisher.len() >= SPRACHE_AB_S * (versuche + 1) * RATE as usize {
+                        versuche += 1;
+                        vorab.sprache = erkenner.sprache_erkennen(&bisher);
+                    }
+                }
+                let sprache = vorab.sprache.as_deref().unwrap_or(&sprache);
                 let neu = lesen_ab(&pfad, vorab.fertig_bis);
                 if neu.len() < noetig {
                     continue;
                 }
                 let schnitt = leiseste_stelle(&neu, STUECK_S * RATE as usize, noetig);
                 let versatz = vorab.fertig_bis as f32 / RATE as f32;
-                match erkenner.erkennen(&neu[..schnitt], &sprache, &vorlage, |_| {}) {
+                match erkenner.erkennen(&neu[..schnitt], sprache, &vorlage) {
                     Ok((_, abschnitte)) => {
                         vorab.abschnitte.extend(abschnitte.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
                         vorab.fertig_bis += schnitt;
@@ -121,7 +137,7 @@ mod tests {
         let vorlage = crate::einstellungen::vorlage("de");
         // Ganz am Stück, zum Vergleich
         let t = std::time::Instant::now();
-        let (ganz, _) = e.erkennen(&ton, "de", &vorlage, |_| {}).unwrap();
+        let (ganz, _) = e.erkennen(&ton, "de", &vorlage).unwrap();
         let dauer_ganz = t.elapsed().as_secs_f32();
         // Wachsende Datei, etwa 4-mal so schnell wie Sprechen
         let ziel = std::env::temp_dir().join(format!("funkel-mitlauf-{}.wav", std::process::id()));
@@ -135,7 +151,7 @@ mod tests {
         let vorab = m.stoppen();
         let rest_ab = vorab.fertig_bis.min(ton.len());
         let versatz = rest_ab as f32 / RATE as f32;
-        let (_, rest) = e.erkennen(&ton[rest_ab..], "de", &vorlage, |_| {}).unwrap();
+        let (_, rest) = e.erkennen(&ton[rest_ab..], "de", &vorlage).unwrap();
         let mut alle = vorab.abschnitte;
         alle.extend(rest.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
         let dauer_rest = t.elapsed().as_secs_f32();

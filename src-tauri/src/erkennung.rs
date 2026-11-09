@@ -51,13 +51,12 @@ impl Erkenner {
         Ok(())
     }
 
-    /// Erkennt den Ton (16 kHz, mono). `fortschritt` bekommt 0…1.
+    /// Erkennt den Ton (16 kHz, mono).
     pub fn erkennen(
         &self,
         ton: &[f32],
         sprache: &str,
         vorlage: &str,
-        fortschritt: impl FnMut(i32) + 'static,
     ) -> Result<(String, Vec<Abschnitt>), String> {
         let wache = self.kontext.lock().unwrap();
         let kontext = wache.as_ref().ok_or("Sprachmodell fehlt")?;
@@ -76,7 +75,6 @@ impl Erkenner {
         if !vorlage.is_empty() {
             p.set_initial_prompt(vorlage);
         }
-        p.set_progress_callback_safe(fortschritt);
         zustand.full(p, ton).map_err(|e| e.to_string())?;
         let mut text = String::new();
         let mut abschnitte = Vec::new();
@@ -91,6 +89,26 @@ impl Erkenner {
         }
         Ok((aufraeumen(&text), abschnitte))
     }
+
+    /// Sprache des Tons, wenn Whisper sich sicher ist. Kostet einen eigenen Durchgang —
+    /// deshalb während der Aufnahme: bei „automatisch“ verdoppelte er sonst nach dem
+    /// Stopp die Wartezeit (gemessen 09.11.2026: 1,32–1,61 s statt 0,66–0,83 s).
+    pub fn sprache_erkennen(&self, ton: &[f32]) -> Option<String> {
+        let wache = self.kontext.lock().unwrap();
+        let mut zustand = wache.as_ref()?.create_state().ok()?;
+        let kerne = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
+        zustand.pcm_to_mel(ton, kerne).ok()?;
+        let (_, wahrscheinlich) = zustand.lang_detect(0, kerne).ok()?;
+        sicher_genug(&wahrscheinlich).and_then(|id| whisper_rs::get_lang_str(id).map(str::to_string))
+    }
+}
+
+/// Mindestens 80 % für eine Sprache, sonst lieber weiter automatisch
+const SPRACHE_SICHER: f32 = 0.8;
+
+fn sicher_genug(wahrscheinlich: &[f32]) -> Option<i32> {
+    let (id, p) = wahrscheinlich.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1))?;
+    (*p >= SPRACHE_SICHER).then_some(id as i32)
 }
 
 /// Ordnet jedem Abschnitt die Person zu, die in seiner Zeit am längsten spricht,
@@ -252,6 +270,13 @@ mod tests {
     }
 
     #[test]
+    fn sprache_nur_wenn_sicher() {
+        assert_eq!(sicher_genug(&[0.05, 0.9, 0.05]), Some(1));
+        assert_eq!(sicher_genug(&[0.4, 0.5, 0.1]), None);
+        assert_eq!(sicher_genug(&[]), None);
+    }
+
+    #[test]
     fn leerraum_wird_geglaettet() {
         assert_eq!(aufraeumen("  Hallo   Welt \n"), "Hallo Welt");
     }
@@ -288,11 +313,25 @@ mod mit_modell {
         let e = Erkenner::neu();
         e.laden(&crate::modell::pfad()).unwrap();
         let beginn = std::time::Instant::now();
-        let (text, _) = e.erkennen(&ton, "de", "", |_| {}).unwrap();
+        let (text, _) = e.erkennen(&ton, "de", "").unwrap();
         println!("{:.1} s Ton in {:.1} s: {text}", ton.len() as f32 / 16000.0, beginn.elapsed().as_secs_f32());
         let klein = text.to_lowercase();
         assert!(klein.contains("funkel") || klein.contains("probediktat"), "{text}");
         assert!(klein.contains("zehn") || klein.contains("10"), "{text}");
+    }
+
+    #[test]
+    #[ignore]
+    fn sprache_wird_vorab_erkannt() {
+        let pfad = std::env::var("FUNKEL_TESTTON").expect("FUNKEL_TESTTON setzen");
+        let ton = wav_lesen(&pfad);
+        let e = Erkenner::neu();
+        e.laden(&crate::modell::pfad()).unwrap();
+        assert_eq!(e.sprache_erkennen(&ton[..ton.len().min(32000)]).as_deref(), Some(std::env::var("FUNKEL_SPRACHE").as_deref().unwrap_or("de")));
+        let sprache = e.sprache_erkennen(&ton).unwrap();
+        let beginn = std::time::Instant::now();
+        let (text, _) = e.erkennen(&ton, &sprache, "").unwrap();
+        println!("{:.1} s Ton mit fester Sprache in {:.2} s: {text}", ton.len() as f32 / 16000.0, beginn.elapsed().as_secs_f32());
     }
 
     /// Erfundenes Gespräch mit zwei Systemstimmen: `FUNKEL_GESPRAECH=datei.wav … -- --ignored protokoll`
@@ -303,7 +342,7 @@ mod mit_modell {
         let ton = wav_lesen(pfad.to_str().unwrap());
         let e = Erkenner::neu();
         e.laden(&crate::modell::pfad()).unwrap();
-        let (_, abschnitte) = e.erkennen(&ton, "de", "", |_| {}).unwrap();
+        let (_, abschnitte) = e.erkennen(&ton, "de", "").unwrap();
         let beginn = std::time::Instant::now();
         let sprecher = crate::helfer::sprecher(&pfad, 0).expect("Sprechertrennung");
         let zahl = sprecher.iter().map(|s| s.2).collect::<std::collections::HashSet<_>>().len();

@@ -20,6 +20,20 @@ const STILLE: f32 = 0.002;
 /// So lange nach „Fertig“ wählen die Ziffern 1–5 einen anderen Modus
 const WAHL: Duration = Duration::from_millis(4500);
 
+/// Erwartete Dauer bis „Fertig“ für die Anzeige: Balken und Kante laufen danach
+/// gleichmäßig durch. `ton_s`: zu erkennender Ton, `None` = nur umformen.
+/// Whisper je angefangene 30 s etwa 0,75 s (gemessen 09.11.2026: 0,66–0,83 s),
+/// Umformen 0,9–2,4 s, Sprechertrennung etwa 5 s.
+fn erwartet_ms(modus: Modus, ton_s: Option<f32>) -> u64 {
+    let whisper = ton_s.map_or(0.0, |s| 750.0 * (s / 30.0).ceil().max(1.0));
+    let umformen = match modus {
+        Modus::Protokoll => 2000.0 + 5000.0,
+        m if m.anweisung().is_some() => 2000.0,
+        _ => 0.0,
+    };
+    (whisper + umformen).max(900.0) as u64
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Phase {
     Bereit,
@@ -124,7 +138,9 @@ impl Ablauf {
             overlay::senden(&self.app, &feld, |_| json!({ "phase": "aus" }));
             return;
         }
-        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.0 }));
+        let modus = self.einstellungen.lock().unwrap().modus;
+        let dauer = erwartet_ms(modus, Some(seit.elapsed().as_secs_f32().min(28.0)));
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "dauer": dauer }));
         let ich = self.clone();
         let mitlauf = self.mitlauf.lock().unwrap().take();
         std::thread::spawn(move || {
@@ -151,7 +167,9 @@ impl Ablauf {
         overlay::sicherstellen(&self.app);
         let feld = overlay::feld_fenster(&self.app);
         *self.feld.lock().unwrap() = feld.clone();
-        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.0 }));
+        let modus = self.einstellungen.lock().unwrap().modus;
+        let dauer = erwartet_ms(modus, Some(ton.len() as f32 / aufnahme::RATE as f32));
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "dauer": dauer }));
         protokoll(&format!("Wiederherstellen: {}", pfad.display()));
         let ich = self.clone();
         std::thread::spawn(move || ich.erkennen(ton, &pfad, feld));
@@ -179,23 +197,17 @@ impl Ablauf {
             }
         }
         let werte = self.einstellungen.lock().unwrap().clone();
-        let app = self.app.clone();
-        let feld_fortschritt = feld.clone();
         let beginn = Instant::now();
-        // Whisper bis 90 % des Balkens, das Umformen den Rest
-        let anteil_whisper = if werte.modus.anweisung().is_some() { 0.9 } else { 1.0 };
         let rest_ab = vorab.fertig_bis.min(ton.len());
         let versatz = rest_ab as f32 / aufnahme::RATE as f32;
         // Stille am Ende nicht an Whisper geben: dort erfindet es Schlusssätze
         let rest_bis = (rest_ab + erkennung::sprechen_endet(&ton[rest_ab..], aufnahme::RATE as usize)).max(rest_ab);
         let stuecke_vorab = vorab.abschnitte.len();
+        let sprache = vorab.sprache.clone().unwrap_or(werte.sprache.clone());
         // Weniger als 0,3 s Sprache im Rest: nichts mehr zu erkennen, nur das Vorab zählt
         let rest_erkennen = rest_bis.saturating_sub(rest_ab) >= aufnahme::RATE as usize * 3 / 10;
         let rest_ergebnis = if rest_erkennen {
-            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &werte.sprache, &einstellungen::vorlage(&werte.sprache), move |prozent| {
-                let anteil = prozent as f32 / 100.0 * anteil_whisper;
-                overlay::senden(&app, &feld_fortschritt, |f| json!({ "phase": "erkennt", "feld": f, "anteil": anteil }));
-            })
+            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &sprache, &einstellungen::vorlage(&werte.sprache))
         } else {
             Ok((String::new(), Vec::new()))
         };
@@ -213,7 +225,7 @@ impl Ablauf {
             }
             Ok((roh, abschnitte)) => {
                 protokoll(&format!(
-                    "Erkannt: {sekunden:.1} s Ton, {:.1} s vorab ({stuecke_vorab} Abschnitte), Rest in {:.1} s",
+                    "Erkannt: {sekunden:.1} s Ton, {:.1} s vorab ({stuecke_vorab} Abschnitte), Sprache {sprache}, Rest in {:.1} s",
                     versatz,
                     beginn.elapsed().as_secs_f32()
                 ));
@@ -253,7 +265,6 @@ impl Ablauf {
         let Some(l) = self.letzte.lock().unwrap().clone() else { return };
         let (pfad, roh) = (l.pfad.as_path(), l.roh.as_str());
         let eingabe = if modus == Modus::Protokoll {
-            overlay::senden(&self.app, feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.9 }));
             self.mit_sprechern(&l)
         } else {
             roh.to_string()
@@ -261,7 +272,6 @@ impl Ablauf {
         let text = match modus.anweisung() {
             None => roh.to_string(),
             Some(anweisung) => {
-                overlay::senden(&self.app, feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.92 }));
                 let beginn = Instant::now();
                 match helfer::umformen(&anweisung, &eingabe) {
                     Ok(t) if !t.is_empty() => {
@@ -311,7 +321,8 @@ impl Ablauf {
             *phase = Phase::Erkennt;
         }
         let feld = self.feld.lock().unwrap().clone();
-        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "anteil": 0.5 }));
+        let dauer = erwartet_ms(modus, None);
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "dauer": dauer }));
         // Schon eingefügter Text würde doppelt stehen: umgewandelt nur in die Zwischenablage
         self.abliefern(modus, false, &feld);
     }
@@ -338,5 +349,19 @@ impl Ablauf {
         let feld = self.feld.lock().unwrap().clone();
         overlay::senden(&self.app, &feld, |f| json!({ "phase": "fehler", "feld": f, "text": text }));
         let _ = self.app.emit("status-geaendert", ());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anzeige_dauer_passt_zum_modus() {
+        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(5.0)), 900);
+        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(45.0)), 1500);
+        assert_eq!(erwartet_ms(Modus::Bereinigt, Some(5.0)), 2750);
+        assert_eq!(erwartet_ms(Modus::Bereinigt, None), 2000);
+        assert!(erwartet_ms(Modus::Protokoll, Some(5.0)) > erwartet_ms(Modus::Bereinigt, Some(5.0)));
     }
 }
