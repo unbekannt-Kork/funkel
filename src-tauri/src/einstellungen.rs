@@ -76,10 +76,12 @@ pub fn woerterbuch_speichern(text: &str) -> Result<(), String> {
 /// etwa 224 Marken, der Rest fällt weg.
 pub fn vorlage(sprache: &str) -> String {
     let mut teile = vec![begriffe()];
-    if sprache != "en" {
+    // Füllwörter als Stilvorbild nur für die eigene Sprache, sonst zieht die Vorlage
+    // Whisper in diese Sprache
+    if matches!(sprache, "auto" | "de") {
         teile.push(crate::modus::STIL_DE.into());
     }
-    if sprache != "de" {
+    if matches!(sprache, "auto" | "en") {
         teile.push(crate::modus::STIL_EN.into());
     }
     let text = teile.into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");
@@ -112,4 +114,17 @@ pub fn protokoll(zeile: &str) {
         let _ = writeln!(f, "{stempel}  {zeile}");
     }
     eprintln!("{zeile}");
+}
+
+#[cfg(test)]
+mod tests_vorlage {
+    use crate::modus::{STIL_DE, STIL_EN};
+
+    #[test]
+    fn fremde_sprache_bekommt_keine_deutschen_fuellwoerter() {
+        let fr = super::vorlage("fr");
+        assert!(!fr.contains(STIL_DE) && !fr.contains(STIL_EN));
+        assert!(super::vorlage("de").contains(STIL_DE));
+        assert!(super::vorlage("en").contains(STIL_EN) && !super::vorlage("en").contains(STIL_DE));
+    }
 }

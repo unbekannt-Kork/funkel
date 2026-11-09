@@ -9,121 +9,169 @@
   </head>
   <body>
     <header>
-      <h1>Funkel</h1>
-      <p class="leise">Zweimal die Taste tippen, sprechen, einmal tippen. Der Text liegt in der Zwischenablage. Alles bleibt auf diesem Rechner.</p>
+      <img src="/src/funkel-symbol.png" alt="" width="56" height="56" />
+      <div>
+        <h1>Funkel</h1>
+        <p class="leise">Zweimal die Taste tippen, sprechen, einmal tippen. Alles bleibt auf diesem Rechner.</p>
+      </div>
     </header>
 
     <section id="liegen-teil" hidden>
       <h2>Nicht fertig</h2>
-      <div id="liegen"></div>
+      <div class="karte" id="liegen"></div>
     </section>
 
     <section>
-      <h2>Bereit?</h2>
-      <div class="zeile" id="zeile-freigabe">
-        <span class="marke" id="freigabe-marke"></span>
-        <div class="text"><strong>Tastatur</strong><span class="leise" id="freigabe-text"></span></div>
-        <button id="freigabe-knopf" hidden>Freigabe öffnen</button>
-      </div>
-      <div class="zeile">
-        <span class="marke" id="modell-marke"></span>
-        <div class="text"><strong>Sprachmodell</strong><span class="leise" id="modell-text"></span>
-          <div class="fortschritt" id="modell-fortschritt" hidden><div id="modell-balken"></div></div>
+      <h2>Status</h2>
+      <div class="karte">
+        <div class="zeile" id="zeile-freigabe">
+          <span class="marke" id="freigabe-marke"></span>
+          <div class="text"><strong>Tastatur</strong><span class="leise" id="freigabe-text"></span></div>
+          <button id="freigabe-knopf" hidden>Freigabe öffnen</button>
         </div>
-        <button id="modell-knopf" hidden>Laden (574 MB)</button>
-      </div>
-      <div class="zeile">
-        <span class="marke" id="sprachmodell-marke"></span>
-        <div class="text"><strong>Modi</strong><span class="leise" id="sprachmodell-text"></span>
-          <div class="fortschritt" id="sprachmodell-fortschritt" hidden><div id="sprachmodell-balken"></div></div>
+        <div class="zeile">
+          <span class="marke" id="modell-marke"></span>
+          <div class="text"><strong>Spracherkennung</strong><span class="leise" id="modell-text"></span>
+            <div class="fortschritt" id="modell-fortschritt" hidden><div id="modell-balken"></div></div>
+          </div>
+          <button id="modell-knopf" hidden>Laden (574 MB)</button>
         </div>
-        <button id="sprachmodell-knopf" hidden>Laden (2,6 GB)</button>
+        <div class="zeile">
+          <span class="marke" id="sprachmodell-marke"></span>
+          <div class="text"><strong>Modi</strong><span class="leise" id="sprachmodell-text"></span>
+            <div class="fortschritt" id="sprachmodell-fortschritt" hidden><div id="sprachmodell-balken"></div></div>
+          </div>
+          <button id="sprachmodell-knopf" hidden>Laden (2,6 GB)</button>
+        </div>
       </div>
     </section>
 
     <section>
-      <h2>Auslöser</h2>
-      <div class="zeile">
-        <div class="text"><strong>Taste</strong><span class="leise">zweimal tippen startet, einmal beendet</span></div>
-        <kbd id="taste-name">^</kbd>
-        <button id="taste-knopf">Andere Taste</button>
+      <h2>Diktieren</h2>
+      <div class="karte">
+        <div class="zeile">
+          <div class="text"><strong>Taste</strong><span class="leise">zweimal tippen startet, einmal beendet</span></div>
+          <kbd id="taste-name">^</kbd>
+          <button id="taste-knopf" class="leicht">Ändern</button>
+        </div>
+        <label class="zeile">
+          <div class="text"><strong>Sprache</strong><span class="leise">wird beim Sprechen erkannt</span></div>
+          <select id="sprache">
+            <option value="auto">automatisch</option>
+            <option value="de">Deutsch</option>
+            <option value="en">Englisch</option>
+            <option value="ar">Arabisch</option>
+            <option value="zh">Chinesisch</option>
+            <option value="da">Dänisch</option>
+            <option value="fi">Finnisch</option>
+            <option value="fr">Französisch</option>
+            <option value="el">Griechisch</option>
+            <option value="hi">Hindi</option>
+            <option value="it">Italienisch</option>
+            <option value="ja">Japanisch</option>
+            <option value="ko">Koreanisch</option>
+            <option value="hr">Kroatisch</option>
+            <option value="nl">Niederländisch</option>
+            <option value="no">Norwegisch</option>
+            <option value="pl">Polnisch</option>
+            <option value="pt">Portugiesisch</option>
+            <option value="ro">Rumänisch</option>
+            <option value="ru">Russisch</option>
+            <option value="sv">Schwedisch</option>
+            <option value="sk">Slowakisch</option>
+            <option value="es">Spanisch</option>
+            <option value="cs">Tschechisch</option>
+            <option value="tr">Türkisch</option>
+            <option value="uk">Ukrainisch</option>
+            <option value="hu">Ungarisch</option>
+          </select>
+        </label>
+        <label class="zeile">
+          <div class="text"><strong>Modus</strong><span class="leise">nach dem Diktat mit 1–5 wechseln</span></div>
+          <select id="modus">
+            <option value="wortgetreu">1 · Wortgetreu</option>
+            <option value="bereinigt">2 · Bereinigt</option>
+            <option value="mail">3 · Mail</option>
+            <option value="whatsapp">4 · WhatsApp</option>
+            <option value="protokoll">5 · Protokoll</option>
+          </select>
+        </label>
+        <label class="zeile">
+          <div class="text"><strong>Sofort einfügen</strong><span class="leise">sonst nur in der Zwischenablage</span></div>
+          <input type="checkbox" class="schalter" id="einfuegen" />
+        </label>
+        <label class="zeile">
+          <div class="text"><strong>Personen im Protokoll</strong><span class="leise">wer spricht wann</span></div>
+          <select id="personen">
+            <option value="0">automatisch</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </label>
       </div>
     </section>
 
     <section>
-      <h2>Text</h2>
-      <label class="zeile">
-        <div class="text"><strong>Modus</strong><span class="leise">nach dem Diktat mit 1–5 umschaltbar</span></div>
-        <select id="modus">
-          <option value="wortgetreu">1 · Wortgetreu</option>
-          <option value="bereinigt">2 · Bereinigt</option>
-          <option value="mail">3 · Mail</option>
-          <option value="whatsapp">4 · WhatsApp</option>
-          <option value="protokoll">5 · Protokoll</option>
-        </select>
-      </label>
-      <label class="zeile">
-        <div class="text"><strong>Personen im Protokoll</strong><span class="leise">wer spricht wann, auf diesem Rechner erkannt</span></div>
-        <select id="personen">
-          <option value="0">automatisch</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-        </select>
-      </label>
-      <label class="zeile">
-        <div class="text"><strong>Anzeige</strong><span class="leise">was du beim Diktieren siehst</span></div>
-        <select id="anzeige">
-          <option value="beides">Rahmen und Feld</option>
-          <option value="rahmen">nur Rahmen</option>
-          <option value="feld">nur Feld unten</option>
-        </select>
-      </label>
-      <label class="zeile">
-        <div class="text"><strong>Ton am Ende</strong><span class="leise">kleiner Klang, wenn der Text fertig ist</span></div>
-        <input type="checkbox" id="ton" />
-      </label>
-      <label class="zeile">
-        <div class="text"><strong>Sofort einfügen</strong><span class="leise">sonst nur in der Zwischenablage</span></div>
-        <input type="checkbox" id="einfuegen" />
-      </label>
-      <label class="zeile">
-        <div class="text"><strong>Sprache</strong></div>
-        <select id="sprache">
-          <option value="auto">automatisch</option>
-          <option value="de">Deutsch</option>
-          <option value="en">Englisch</option>
-        </select>
-      </label>
-      <div class="zeile spalte">
-        <div class="text"><strong>Wörterbuch</strong><span class="leise">ein Begriff je Zeile, so geschrieben, wie er im Text stehen soll</span></div>
-        <textarea id="woerterbuch" rows="4" spellcheck="false" placeholder="Supabase&#10;Tauri"></textarea>
+      <h2>Anzeige</h2>
+      <div class="karte">
+        <label class="zeile">
+          <div class="text"><strong>Beim Diktieren</strong><span class="leise">was du auf dem Bildschirm siehst</span></div>
+          <select id="anzeige">
+            <option value="beides">Rahmen und Feld</option>
+            <option value="rahmen">nur Rahmen</option>
+            <option value="feld">nur Feld unten</option>
+          </select>
+        </label>
+        <label class="zeile">
+          <div class="text"><strong>Ton am Ende</strong><span class="leise">kleiner Klang, wenn der Text fertig ist</span></div>
+          <input type="checkbox" class="schalter" id="ton" />
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Wörterbuch</h2>
+      <div class="karte">
+        <div class="zeile spalte">
+          <span class="leise">Ein Begriff je Zeile, so geschrieben, wie er im Text stehen soll.</span>
+          <textarea id="woerterbuch" rows="4" spellcheck="false" placeholder="Supabase&#10;Tauri"></textarea>
+        </div>
       </div>
     </section>
 
     <section>
       <h2>Verlauf</h2>
-      <div id="verlauf"><p class="leise zeile">Noch keine Diktate.</p></div>
-      <label class="zeile">
-        <div class="text"><strong>Aufbewahren</strong><span class="leise">Ton und Text, nur auf diesem Rechner</span></div>
-        <select id="aufbewahren">
-          <option value="1">1 Tag</option>
-          <option value="7">7 Tage</option>
-          <option value="30">30 Tage</option>
-          <option value="0">immer</option>
-        </select>
-      </label>
-      <div class="zeile"><div class="text"></div><button id="ordner-knopf" class="leicht">Ordner öffnen</button></div>
+      <div class="karte">
+        <div id="verlauf"><p class="leise zeile">Noch keine Diktate.</p></div>
+      </div>
+      <div class="karte">
+        <label class="zeile">
+          <div class="text"><strong>Aufbewahren</strong><span class="leise">Ton und Text, nur hier</span></div>
+          <select id="aufbewahren">
+            <option value="1">1 Tag</option>
+            <option value="7">7 Tage</option>
+            <option value="30">30 Tage</option>
+            <option value="0">immer</option>
+          </select>
+        </label>
+        <div class="zeile">
+          <div class="text"><strong>Ablage</strong><span class="leise">alle Aufnahmen und Texte</span></div>
+          <button id="ordner-knopf" class="leicht">Ordner öffnen</button>
+        </div>
+      </div>
     </section>
 
     <section>
       <h2>Start</h2>
-      <label class="zeile">
-        <div class="text"><strong>Mit dem Rechner starten</strong></div>
-        <input type="checkbox" id="autostart" />
-      </label>
+      <div class="karte">
+        <label class="zeile">
+          <div class="text"><strong>Mit dem Rechner starten</strong></div>
+          <input type="checkbox" class="schalter" id="autostart" />
+        </label>
+      </div>
     </section>
   </body>
 </html>

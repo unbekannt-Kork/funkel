@@ -307,7 +307,7 @@ dependencies = [
 
 [[package]]
 name = "funkel-helfer"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "llama-cpp-2",
  "serde",

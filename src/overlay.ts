@@ -23,7 +23,7 @@ const KANTE_ENDE = 14;
 const FERTIG_STEHT_MS = 2500;
 const FEHLER_STEHT_MS = 5000;
 const WAHL_AB_MS = 900; // erst „✓ Fertig“ lesen lassen, dann die Modi zeigen
-const WAHL_MS = 3600; // passt zu WAHL im Rust-Ablauf (4,5 s ab Fertig)
+const WAHL_MS = 7100; // passt zu WAHL im Rust-Ablauf (8 s ab Fertig)
 
 const rand = document.getElementById("rand")!;
 const kante = document.getElementById("kante")!;

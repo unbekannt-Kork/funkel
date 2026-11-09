@@ -1,41 +1,74 @@
+/* Aufbau wie die macOS-Systemeinstellungen: Gruppentitel über der Karte,
+   gleich hohe Zeilen, Bedienelemente rechtsbündig in einer Breite. */
 :root {
   color-scheme: light dark;
-  --grund: #f6f6f8;
+  --grund: #f2f2f5;
   --flaeche: #fff;
   --linie: rgb(0 0 0 / 0.08);
   --text: #18181b;
-  --leise: #6b6b76;
+  --leise: #6e6e78;
   --akzent: #5e5ab9;
   --gut: #2f9e64;
   --fehlt: #d4473d;
+  --feld: rgb(0 0 0 / 0.05);
+  --rand: 16px; /* Innenabstand der Karte */
+  --breite: 156px; /* gemeinsame Breite der Auswahlfelder */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.35;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --grund: #161618; --flaeche: #1f1f22; --linie: rgb(255 255 255 / 0.08); --text: #f2f2f4; --leise: #9a9aa6; --akzent: #9692f0; }
+  :root {
+    --grund: #1c1c1e;
+    --flaeche: #2a2a2d;
+    --linie: rgb(255 255 255 / 0.08);
+    --text: #f2f2f4;
+    --leise: #9d9da8;
+    --akzent: #9692f0;
+    --feld: rgb(255 255 255 / 0.07);
+  }
 }
-body { margin: 0; padding: 24px; background: var(--grund); color: var(--text); }
-header h1 { margin: 0 0 4px; font-size: 22px; }
-h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--leise); margin: 24px 0 8px; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 20px 20px 28px; background: var(--grund); color: var(--text); }
+
+header { display: flex; align-items: center; gap: 14px; margin: 4px 4px 22px; }
+header img { flex: none; }
+header h1 { margin: 0 0 2px; font-size: 20px; font-weight: 650; }
+header p { margin: 0; }
+
+section + section { margin-top: 20px; }
+h2 { margin: 0 var(--rand) 6px; font-size: 12px; font-weight: 600; color: var(--leise); }
+.karte { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 10px; padding: 0 var(--rand); }
+.karte + .karte { margin-top: 10px; }
+
 .leise { color: var(--leise); }
-section { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 12px; padding: 4px 16px; }
-section h2 { margin: 12px 0 4px; }
-.zeile { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--linie); }
-section h2 + .zeile { border-top: 0; }
-.zeile.spalte { flex-direction: column; align-items: stretch; }
-.text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.marke { width: 10px; height: 10px; border-radius: 5px; background: var(--fehlt); flex: none; }
+.zeile { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; margin: 0; border-top: 1px solid var(--linie); }
+.karte > .zeile:first-child, .karte > div:first-child > .zeile:first-child { border-top: 0; }
+.zeile.spalte { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 0 14px; }
+.text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.text strong { font-weight: 550; }
+.marke { width: 8px; height: 8px; border-radius: 4px; background: var(--fehlt); flex: none; }
 .marke.gut { background: var(--gut); }
-button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--linie); background: var(--akzent); color: #fff; cursor: pointer; }
-button.leicht { background: transparent; color: var(--akzent); }
-.eintrag { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--linie); }
-#verlauf .eintrag:first-child, #liegen .eintrag:first-child { border-top: 0; }
-.eintrag .wann { flex: none; width: 92px; color: var(--leise); font-variant-numeric: tabular-nums; }
-.eintrag .inhalt { flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.eintrag button { flex: none; padding: 4px 10px; }
+
+button { font: inherit; padding: 5px 12px; border-radius: 7px; border: 0; background: var(--akzent); color: #fff; cursor: pointer; flex: none; }
+button.leicht { background: var(--feld); color: var(--text); }
 button:disabled { opacity: 0.5; cursor: default; }
-kbd { font: 600 14px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 8px; border: 1px solid var(--linie); border-radius: 4px; }
-select, textarea { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--linie); background: var(--grund); color: var(--text); }
-textarea { resize: vertical; }
-.fortschritt { height: 4px; border-radius: 3px; background: var(--linie); margin-top: 6px; overflow: hidden; }
+kbd { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 28px; text-align: center; padding: 3px 8px; border-radius: 6px; background: var(--feld); }
+select { font: inherit; width: var(--breite); flex: none; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--linie); background: var(--feld); color: var(--text); }
+textarea { font: inherit; width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--linie); background: var(--feld); color: var(--text); resize: vertical; }
+
+/* Schalter statt Häkchen */
+input.schalter { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 38px; height: 22px; margin: 0; border-radius: 11px; background: rgb(120 120 128 / 0.32); cursor: pointer; transition: background 0.2s; }
+input.schalter::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 9px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.2s; }
+input.schalter:checked { background: var(--gut); }
+input.schalter:checked::after { transform: translateX(16px); }
+
+.fortschritt { height: 4px; border-radius: 2px; background: var(--linie); margin-top: 6px; overflow: hidden; }
 #modell-balken, #sprachmodell-balken { height: 100%; width: 0; background: var(--akzent); transition: width 0.2s linear; }
+
+/* Verlauf: Zeit links, Text in der Mitte, Knopf rechts */
+.eintrag { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--linie); }
+#verlauf .eintrag:first-child, #liegen .eintrag:first-child { border-top: 0; }
+.eintrag .wann { flex: none; width: 88px; color: var(--leise); font-variant-numeric: tabular-nums; }
+.eintrag .inhalt { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.eintrag button { padding: 4px 10px; background: var(--feld); color: var(--text); }

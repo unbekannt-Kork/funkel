@@ -17,8 +17,8 @@ use crate::{ablage, ausloeser, helfer, modell, overlay, plattform};
 const MINDESTDAUER: Duration = Duration::from_millis(400);
 /// Leiser als das ist Stille (Effektivwert)
 const STILLE: f32 = 0.002;
-/// So lange nach „Fertig“ wählen die Ziffern 1–5 einen anderen Modus
-const WAHL: Duration = Duration::from_millis(4500);
+/// So lange nach „Fertig“ wählen die Ziffern 1–5 einen anderen Modus; jede andere Taste beendet die Wahl
+const WAHL: Duration = Duration::from_millis(8000);
 
 /// Erwartete Dauer bis „Fertig“ für die Anzeige: Balken und Kante laufen danach
 /// gleichmäßig durch. `ton_s`: zu erkennender Ton, `None` = nur umformen.
@@ -102,7 +102,6 @@ impl Ablauf {
                     a.pfad.clone(),
                     self.erkenner.clone(),
                     werte.sprache.clone(),
-                    einstellungen::vorlage(&werte.sprache),
                 ));
                 *self.aufnahme.lock().unwrap() = Some((a, Instant::now()));
                 *self.phase.lock().unwrap() = Phase::Hoert;
@@ -207,7 +206,7 @@ impl Ablauf {
         // Weniger als 0,3 s Sprache im Rest: nichts mehr zu erkennen, nur das Vorab zählt
         let rest_erkennen = rest_bis.saturating_sub(rest_ab) >= aufnahme::RATE as usize * 3 / 10;
         let rest_ergebnis = if rest_erkennen {
-            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &sprache, &einstellungen::vorlage(&werte.sprache))
+            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &sprache, &einstellungen::vorlage(&sprache))
         } else {
             Ok((String::new(), Vec::new()))
         };

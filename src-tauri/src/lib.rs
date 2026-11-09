@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(not(target_os = "macos"))]
@@ -222,12 +222,24 @@ fn menue_bauen(app: &AppHandle) -> tauri::Result<()> {
     let einstellungen = MenuItem::with_id(app, "einstellungen", "Einstellungen …", true, None::<&str>)?;
     let beenden = MenuItem::with_id(app, "beenden", "Funkel beenden", true, None::<&str>)?;
     let menue = Menu::with_items(app, &[&hinweis, &PredefinedMenuItem::separator(app)?, &einstellungen, &beenden])?;
+    // Mac: einfarbige Vorlage, passt sich hell und dunkel an; Windows: das App-Symbol
+    let (symbol, vorlage) = if cfg!(target_os = "macos") {
+        (tauri::image::Image::from_bytes(include_bytes!("../icons/menueleiste.png"))?, true)
+    } else {
+        (app.default_window_icon().cloned().ok_or(tauri::Error::InvalidIcon(std::io::Error::other("kein Symbol")))?, false)
+    };
+    // Klick öffnet Funkel, Rechtsklick das Menü
     TrayIconBuilder::with_id("funkel")
-        .icon(app.default_window_icon().cloned().ok_or(tauri::Error::InvalidIcon(std::io::Error::other("kein Symbol")))?)
-        .icon_as_template(false)
+        .icon(symbol)
+        .icon_as_template(vorlage)
         .tooltip("Funkel")
         .menu(&menue)
-        .show_menu_on_left_click(true)
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|symbol, e| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
+                einstellungen_zeigen(symbol.app_handle());
+            }
+        })
         .on_menu_event(|app, e| match e.id.as_ref() {
             "einstellungen" => einstellungen_zeigen(app),
             "beenden" => app.exit(0),
