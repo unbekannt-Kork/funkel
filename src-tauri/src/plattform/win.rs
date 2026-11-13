@@ -82,6 +82,11 @@ pub fn abgriff_wach_halten() -> bool {
     LAEUFT.load(Ordering::SeqCst)
 }
 
+/// Taub-Erkennung gibt es bisher nur auf dem Mac
+pub fn abgriff_taub() -> bool {
+    false
+}
+
 fn eingabe(vk: VIRTUAL_KEY, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,

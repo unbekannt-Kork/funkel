@@ -1,7 +1,9 @@
 //! macOS: CGEventTap auf eigenem Faden, Tastendrücke über CGEventPost.
 #![allow(non_upper_case_globals, non_snake_case)]
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use super::Rueckruf;
 
@@ -46,6 +48,7 @@ extern "C" {
     fn CGEventCreateKeyboardEvent(source: CGEventSourceRef, key: u16, down: bool) -> CGEventRef;
     fn CGEventSourceCreate(state: i32) -> CGEventSourceRef;
     fn CGEventPost(tap: u32, event: CGEventRef);
+    fn CGEventSourceSecondsSinceLastEventType(state: i32, typ: u32) -> f64;
     fn AXIsProcessTrusted() -> bool;
     fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
     static kAXTrustedCheckOptionPrompt: *const c_void;
@@ -55,6 +58,7 @@ extern "C" {
 extern "C" {
     fn CFMachPortCreateRunLoopSource(alloc: *const c_void, port: CFMachPortRef, order: isize) -> CFRunLoopSourceRef;
     fn CFMachPortIsValid(port: CFMachPortRef) -> bool;
+    fn CFMachPortInvalidate(port: CFMachPortRef);
     fn CFRunLoopGetCurrent() -> CFRunLoopRef;
     fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: *const c_void);
     fn CFRunLoopRun();
@@ -65,6 +69,7 @@ extern "C" {
 #[link(name = "Carbon", kind = "framework")]
 extern "C" {
     fn LMGetKbdType() -> u8;
+    fn IsSecureEventInputEnabled() -> bool;
     fn TISCopyCurrentKeyboardLayoutInputSource() -> *const c_void;
     fn TISGetInputSourceProperty(quelle: *const c_void, schluessel: *const c_void) -> *const c_void;
     fn UCKeyTranslate(
@@ -111,6 +116,13 @@ fn zeichen_von(code: u16) -> Option<char> {
 
 static TAP: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 static RUECKRUF: AtomicUsize = AtomicUsize::new(0);
+/// Wann der Abgriff zuletzt einen Anschlag gesehen hat, in ms seit `uhr()`
+static GESEHEN_MS: AtomicU64 = AtomicU64::new(0);
+
+fn uhr() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
 
 extern "C" fn tap_rueckruf(_proxy: *mut c_void, typ: u32, event: CGEventRef, _user: *mut c_void) -> CGEventRef {
     unsafe {
@@ -121,6 +133,9 @@ extern "C" fn tap_rueckruf(_proxy: *mut c_void, typ: u32, event: CGEventRef, _us
                 CGEventTapEnable(tap, true);
             }
             return event;
+        }
+        if typ == kCGEventKeyDown {
+            GESEHEN_MS.store(uhr(), Ordering::SeqCst);
         }
         if typ != kCGEventKeyDown || CGEventGetIntegerValueField(event, kCGEventSourceUserData) == EIGEN {
             return event;
@@ -143,6 +158,15 @@ extern "C" fn tap_rueckruf(_proxy: *mut c_void, typ: u32, event: CGEventRef, _us
 
 pub fn abgriff_starten(rueckruf: Rueckruf) -> bool {
     RUECKRUF.store(rueckruf as usize, Ordering::SeqCst);
+    // Alten Abgriff lösen: ohne Quelle endet seine Schleife und mit ihr sein Faden
+    let alt = TAP.swap(std::ptr::null_mut(), Ordering::SeqCst);
+    if !alt.is_null() {
+        unsafe {
+            CGEventTapEnable(alt, false);
+            CFMachPortInvalidate(alt);
+        }
+    }
+    GESEHEN_MS.store(uhr(), Ordering::SeqCst);
     let (fertig_tx, fertig_rx) = std::sync::mpsc::channel();
     // Eigener Faden mit eigener Schleife: jeder Anschlag am ganzen Mac wartet
     // auf diesen Rückruf, er darf nie an der Oberfläche hängen.
@@ -187,6 +211,32 @@ pub fn abgriff_wach_halten() -> bool {
         }
     }
     true
+}
+
+/// Abgriff taub: das System meldet frische Anschläge, beim Abgriff kam seit
+/// `TAUB_AB` keiner an. So stand Funkel am 12./13.11.2026 eine Nacht lang still,
+/// obwohl der Abgriff laut System eingeschaltet war; erst ein Neustart half.
+const TAUB_AB: f64 = 30.0;
+
+fn taub(system_s: f64, abgriff_s: f64) -> bool {
+    system_s < 5.0 && abgriff_s > system_s + TAUB_AB
+}
+
+/// Für den Wächter: `true` = Abgriff neu anhängen. Bei sicherer Eingabe
+/// (Passwortfelder) sieht kein Abgriff etwas, das ist kein Fehler.
+pub fn abgriff_taub() -> bool {
+    if TAP.load(Ordering::SeqCst).is_null() {
+        return false;
+    }
+    unsafe {
+        if IsSecureEventInputEnabled() {
+            GESEHEN_MS.store(uhr(), Ordering::SeqCst);
+            return false;
+        }
+        let system_s = CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateHIDSystemState, kCGEventKeyDown);
+        let abgriff_s = uhr().saturating_sub(GESEHEN_MS.load(Ordering::SeqCst)) as f64 / 1000.0;
+        taub(system_s, abgriff_s)
+    }
 }
 
 fn senden(code: u16, flags: u64) {
@@ -313,5 +363,26 @@ pub fn fenster_ueber_allem(fenster: &tauri::WebviewWindow) {
         let _: () = msg_send![w, setCollectionBehavior: (1usize | 16 | 64 | 256)];
         let _: () = msg_send![w, setIgnoresMouseEvents: true];
         let _: () = msg_send![w, setHasShadow: false];
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::taub;
+
+    #[test]
+    fn frischer_anschlag_ohne_abgriff_ist_taub() {
+        assert!(taub(1.0, 120.0));
+    }
+
+    #[test]
+    fn abgriff_sah_den_anschlag() {
+        assert!(!taub(1.0, 1.0));
+    }
+
+    #[test]
+    fn niemand_tippt_ist_nicht_taub() {
+        assert!(!taub(600.0, 600.0));
+        assert!(!taub(10.0, 3600.0));
     }
 }

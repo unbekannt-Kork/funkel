@@ -333,6 +333,9 @@ pub fn run() {
                     protokoll("Freigabe erteilt, Tastatur wird gelesen");
                     let _ = waechter.emit("status-geaendert", ());
                 }
+                if plattform::abgriff_taub() && ausloeser::neu_anhaengen() {
+                    protokoll("Tastatur kam nicht mehr an, Abgriff neu angehängt");
+                }
                 let w = waechter.clone();
                 let _ = waechter.run_on_main_thread(move || overlay::sicherstellen(&w));
             });

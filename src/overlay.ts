@@ -95,6 +95,8 @@ function alleAbbrechen() {
 let uhrTakt = 0;
 // Einstellung „Anzeige“: false = nur das Feld, kein Rahmen
 let mitRand = true;
+// Dieses Fenster gehört zum Bildschirm des Diktats (für den Ton, auch ohne Feld)
+let hier = false;
 
 function uhrText(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -241,7 +243,7 @@ function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
   alleAbbrechen();
   // Balken und Kante laufen gleichmäßig voll, dann ist die Kante breit und grün und blendet aus
   laufBeenden(() => {
-    if (mitFeld) invoke("ton_fertig").catch(() => {});
+    if (hier) invoke("ton_fertig").catch(() => {});
     spaeter(KANTE_STEHT_MS, () => (kante.className = mitRand ? "weg" : ""));
     if (!mitFeld) return;
     feld.classList.remove("erkennt", "balken-da", "hoert");
@@ -310,6 +312,7 @@ if (vorschau) {
 // die der anderen Bildschirme mit, dann stand das Feld überall.
 if (!vorschau) getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: z }) => {
   if ("rand" in z) mitRand = (z as { rand?: boolean }).rand !== false;
+  if ("hier" in z) hier = (z as { hier?: boolean }).hier === true;
   switch (z.phase) {
     case "hoert": return hoert(z.feld);
     case "pegel": return warme.forEach((w) => (w.style.opacity = String(z.wert)));

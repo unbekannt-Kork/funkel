@@ -23,13 +23,15 @@ pub struct Einstellungen {
     pub personen: i32,
     /// Kleiner Ton, wenn der Text fertig ist
     pub ton: bool,
-    /// `beides` (Rahmen und Feld), `rahmen` oder `feld`
+    /// `beides` (Rahmen und Feld), `rahmen`, `feld` oder `nichts`
     pub anzeige: String,
+    /// Nach dem Diktat die Modi zur Schnellwahl einblenden (Ziffern 1–5)
+    pub modi_zeigen: bool,
 }
 
 impl Default for Einstellungen {
     fn default() -> Self {
-        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0, ton: true, anzeige: "beides".into() }
+        Self { taste: None, einfuegen: true, sprache: "auto".into(), autostart: true, doppeltipp_ms: 550, aufbewahren_tage: 7, modus: Default::default(), personen: 0, ton: true, anzeige: "beides".into(), modi_zeigen: true }
     }
 }
 
