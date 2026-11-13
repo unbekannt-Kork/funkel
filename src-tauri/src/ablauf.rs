@@ -23,9 +23,11 @@ const WAHL: Duration = Duration::from_millis(8000);
 /// Erwartete Dauer bis „Fertig“ für die Anzeige: Balken und Kante laufen danach
 /// gleichmäßig durch. `ton_s`: zu erkennender Ton, `None` = nur umformen.
 /// Whisper je angefangene 30 s etwa 0,75 s (gemessen 09.11.2026: 0,66–0,83 s),
-/// Umformen 0,9–2,4 s, Sprechertrennung etwa 5 s.
+/// dazu 0,35 s für Stoppen und den letzten Abschnitt des Mitlaufs (13.11.2026:
+/// Rest im Mittel 0,9 s, jedes zehnte Diktat 1,5 s und mehr). Umformen 0,9–2,4 s,
+/// Sprechertrennung etwa 5 s. Dauert es länger, wird der Balken langsamer, steht aber nie.
 fn erwartet_ms(modus: Modus, ton_s: Option<f32>) -> u64 {
-    let whisper = ton_s.map_or(0.0, |s| 750.0 * (s / 30.0).ceil().max(1.0));
+    let whisper = ton_s.map_or(0.0, |s| 350.0 + 750.0 * (s / 30.0).ceil().max(1.0));
     let umformen = match modus {
         Modus::Protokoll => 2000.0 + 5000.0,
         m if m.anweisung().is_some() => 2000.0,
@@ -63,6 +65,8 @@ pub struct Ablauf {
     pub einstellungen: Mutex<Einstellungen>,
     /// Letztes Diktat — Grundlage für das Umwandeln in einen anderen Modus
     letzte: Mutex<Option<Letzte>>,
+    /// Wann zuletzt gestoppt wurde, um die Wartezeit bis „Fertig“ zu messen
+    gestoppt: Mutex<Option<Instant>>,
 }
 
 impl Ablauf {
@@ -77,6 +81,7 @@ impl Ablauf {
             laeuft: Arc::new(AtomicBool::new(false)),
             einstellungen: Mutex::new(werte),
             letzte: Mutex::new(None),
+            gestoppt: Mutex::new(None),
         })
     }
 
@@ -128,6 +133,7 @@ impl Ablauf {
         let Some((aufnahme, seit)) = self.aufnahme.lock().unwrap().take() else { return };
         *self.phase.lock().unwrap() = Phase::Erkennt;
         self.laeuft.store(false, Ordering::SeqCst);
+        *self.gestoppt.lock().unwrap() = Some(Instant::now());
         let feld = self.feld.lock().unwrap().clone();
         if seit.elapsed() < MINDESTDAUER {
             let pfad = aufnahme.pfad.clone();
@@ -305,6 +311,9 @@ impl Ablauf {
         let namen: Vec<&str> = if modi_zeigen { modus::ALLE.iter().map(|m| m.name()).collect() } else { Vec::new() };
         let aktiv = modus::ALLE.iter().position(|m| *m == modus).unwrap_or(0);
         overlay::senden(&self.app, feld, |f| json!({ "phase": "fertig", "feld": f, "modi": namen, "aktiv": aktiv }));
+        if let Some(gestoppt) = self.gestoppt.lock().unwrap().take() {
+            protokoll(&format!("Fertig nach {:.1} s ab Stopp", gestoppt.elapsed().as_secs_f32()));
+        }
         if modi_zeigen {
             ausloeser::wahl_oeffnen(WAHL);
         }
@@ -361,9 +370,9 @@ mod tests {
 
     #[test]
     fn anzeige_dauer_passt_zum_modus() {
-        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(5.0)), 900);
-        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(45.0)), 1500);
-        assert_eq!(erwartet_ms(Modus::Bereinigt, Some(5.0)), 2750);
+        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(5.0)), 1100);
+        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(45.0)), 1850);
+        assert_eq!(erwartet_ms(Modus::Bereinigt, Some(5.0)), 3100);
         assert_eq!(erwartet_ms(Modus::Bereinigt, None), 2000);
         assert!(erwartet_ms(Modus::Protokoll, Some(5.0)) > erwartet_ms(Modus::Bereinigt, Some(5.0)));
     }
