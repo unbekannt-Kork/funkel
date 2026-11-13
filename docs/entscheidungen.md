@@ -40,3 +40,5 @@
 | 09.11.2026 | Einstellungen im Aufbau der macOS-Systemeinstellungen: Gruppentitel über der Karte, gleich hohe Zeilen, einheitliche Feldbreite, Schalter | Louis: „Spacing … total beschissen“ |
 | 09.11.2026 | 26 Sprachen; Füllwort-Vorlage nur für Deutsch/Englisch | mehr Sprachen gewünscht; deutsche Füllwörter in der Vorlage hätten andere Sprachen Richtung Deutsch gezogen |
 | 09.11.2026 | Modus-Auswahl steht nach dem Einfügen 8 s statt 4,5 s | Louis: soll nach dem Einfügen „nicht direkt verpissen“; jede andere Taste beendet die Wahl weiterhin |
+| 13.11.2026 | Wächter hängt den Tastatur-Abgriff neu an, wenn das System frische Anschläge meldet, beim Abgriff aber seit 30 s keiner ankam (nicht bei sicherer Eingabe) | Funkel reagierte am 12./13.11. eine Nacht lang nicht auf `^^`, obwohl der Abgriff laut System eingeschaltet war; nur ein Neustart half |
+| 13.11.2026 | Schalter „Modi nach dem Diktat“ und Anzeige-Stufe „nichts“; Ton kommt aus dem Fenster des Diktats, auch ohne Feld | Louis will die Einblendung unten abschalten können; bei „nur Rahmen“ fehlte bisher der Ton |

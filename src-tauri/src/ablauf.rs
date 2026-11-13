@@ -300,10 +300,14 @@ impl Ablauf {
             std::thread::sleep(Duration::from_millis(80));
             plattform::einfuegen();
         }
-        let namen: Vec<&str> = modus::ALLE.iter().map(|m| m.name()).collect();
+        // Schnellwahl abgeschaltet: keine Modi zeigen, Ziffern bleiben Ziffern
+        let modi_zeigen = self.einstellungen.lock().unwrap().modi_zeigen;
+        let namen: Vec<&str> = if modi_zeigen { modus::ALLE.iter().map(|m| m.name()).collect() } else { Vec::new() };
         let aktiv = modus::ALLE.iter().position(|m| *m == modus).unwrap_or(0);
         overlay::senden(&self.app, feld, |f| json!({ "phase": "fertig", "feld": f, "modi": namen, "aktiv": aktiv }));
-        ausloeser::wahl_oeffnen(WAHL);
+        if modi_zeigen {
+            ausloeser::wahl_oeffnen(WAHL);
+        }
         self.zurueck();
     }
 
