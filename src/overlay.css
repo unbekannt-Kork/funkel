@@ -11,6 +11,10 @@
   /* Erkennung: eine einzige, klare Farbe */
   --gruen: #30d158;
   --kurve: cubic-bezier(0.22, 1, 0.36, 1);
+  /* gleich RADIUS in overlay.ts */
+  --radius: 28px;
+  /* Punkt → Balken, gleich PUNKT_ZUM_BALKEN_MS in overlay.ts */
+  --wandel: 0.32s;
 }
 
 html, body {
@@ -76,16 +80,15 @@ html, body {
 
 /* -------------------------------------------------------- grüne Kante -- */
 /* Erkennung: klare grüne Kante ohne Verlauf, wird mit dem Fortschritt breiter.
-   Eine Farbe, scharfe runde Innenkante (Maske aus overlay.ts), Ecken voll. */
+   Gleiche runde Form wie der Farbrand; der Innenrand folgt dem Radius von selbst.
+   overlay.ts setzt je Bild nur --dicke. */
 #kante {
+  --dicke: 3px;
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: var(--gruen);
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 var(--dicke) var(--gruen);
   opacity: 0;
   transition: opacity 0.25s var(--kurve);
 }
@@ -129,9 +132,9 @@ html, body {
   height: 12px;
   border-radius: 6px;
   background: var(--rot);
-  transition: left 0.42s var(--kurve), top 0.42s var(--kurve), width 0.42s var(--kurve),
-              height 0.42s var(--kurve), border-radius 0.42s var(--kurve), background-color 0.42s var(--kurve),
-              opacity 0.2s;
+  transition: left var(--wandel) var(--kurve), top var(--wandel) var(--kurve), width var(--wandel) var(--kurve),
+              height var(--wandel) var(--kurve), border-radius var(--wandel) var(--kurve),
+              background-color var(--wandel) var(--kurve), transform var(--wandel) var(--kurve), opacity 0.15s;
 }
 /* Atmen: gleichmäßig groß und klein, ohne Ruck an den Enden */
 #feld.hoert #punkt { animation: aufspringen 0.45s var(--kurve), atmen 1.4s ease-in-out 0.45s infinite; }
@@ -175,7 +178,7 @@ html, body {
   border-radius: 3px;
   background: rgb(255 255 255 / 0.14);
   opacity: 0;
-  transition: opacity 0.42s var(--kurve);
+  transition: opacity var(--wandel) var(--kurve);
 }
 #balken {
   height: 100%;
@@ -185,17 +188,19 @@ html, body {
   /* Breite setzt overlay.ts im selben Takt wie die Kante */
 }
 
-/* Hört zu → Balken: der Punkt rutscht an den Balkenanfang, wird grün und flach */
+/* Hört zu → Balken: der rote Punkt rutscht genau an den Balkenanfang, wird grün und
+   so groß wie die Spur; der Balken wächst aus ihm heraus, er liegt farbgleich darauf. */
 #feld.erkennt #punkt, #feld.fertig #punkt {
   left: 22px;
   top: 26px;
-  width: 24px;
+  width: 4px;
   height: 4px;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--gruen);
+  transform: none;
   animation: none;
 }
-#feld.erkennt #zeile, #feld.fertig #zeile { opacity: 0; }
+#feld.erkennt #zeile, #feld.fertig #zeile { opacity: 0; transition-duration: 0.18s; }
 #feld.erkennt #spur { opacity: 1; }
 #feld.erkennt.balken-da #punkt { opacity: 0; }
 

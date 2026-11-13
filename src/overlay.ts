@@ -14,7 +14,10 @@ type Zustand =
 // Aufnahme: kurz breit, dann schmal im Hintergrund
 const STUFEN = { schmal: [7, 12], breit: [11, 18] } as const;
 type Stufe = keyof typeof STUFEN;
-const RADIUS = 40;
+// Ein Eckenradius für Farbrand und grüne Kante: außen rund, innen gleich weit
+// eingerückt (konzentrisch), damit das Band rundum gleich dick ist (13.11.2026:
+// außen eckig und innen 33 px rund machte die Ecken dick und „abgeknackt“).
+const RADIUS = 28;
 const ANLAUF_MS = 1300; // Start: kurz breit, dann schmal im Hintergrund
 const KANTE_STEHT_MS = 250; // voll und grün kurz stehen lassen, dann ausblenden
 // Grüne Kante: Breite in Pixeln, wächst mit dem Fortschritt
@@ -24,6 +27,7 @@ const FERTIG_STEHT_MS = 2500;
 const FEHLER_STEHT_MS = 5000;
 const WAHL_AB_MS = 900; // erst „✓ Fertig“ lesen lassen, dann die Modi zeigen
 const WAHL_MS = 7100; // passt zu WAHL im Rust-Ablauf (8 s ab Fertig)
+const PUNKT_ZUM_BALKEN_MS = 320; // passt zu --wandel in overlay.css
 
 const rand = document.getElementById("rand")!;
 const kante = document.getElementById("kante")!;
@@ -35,28 +39,43 @@ const wahl = document.getElementById("wahl")!;
 
 const baender: Record<Stufe, HTMLDivElement> = {} as never;
 const warme: HTMLDivElement[] = [];
+let stufeJetzt: Stufe | null = null;
+let gebaut = "";
 
-/** Maske eines Bands: Bildschirm minus innen abgerundetes Rechteck, weich gezeichnet.
- *  Außen reicht die Fläche über den Rand hinaus, damit der Weichzeichner dort nicht ausfranst. */
+/** Maske eines Bands, einmal je Bildschirmgröße in voller Auflösung gezeichnet:
+ *  außen der runde Rand, innen weich auslaufend mit demselben Mittelpunkt der Ecken.
+ *  Vorher ein SVG mit Weichzeichner: WebKit rechnete es in halber Auflösung (Stufen). */
 function maske(breite: number, hoehe: number, band: number, weich: number): string {
-  const r = Math.max(RADIUS - band, 8);
-  const x = band, y = band, w = breite - 2 * band, h = hoehe - 2 * band;
-  const innen =
-    `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r} ` +
-    `A${r},${r} 0 0 1 ${x + w - r},${y + h} H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r} ` +
-    `V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${breite}" height="${hoehe}" viewBox="0 0 ${breite} ${hoehe}">` +
-    `<filter id="w" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="${weich / 2}"/></filter>` +
-    `<path filter="url(#w)" fill="#000" fill-rule="evenodd" d="M-60,-60 H${breite + 60} V${hoehe + 60} H-60 Z ${innen}"/>` +
-    `</svg>`;
-  return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+  const dpr = window.devicePixelRatio || 1;
+  const leinwand = document.createElement("canvas");
+  leinwand.width = Math.round(breite * dpr);
+  leinwand.height = Math.round(hoehe * dpr);
+  const c = leinwand.getContext("2d")!;
+  c.scale(dpr, dpr);
+  c.beginPath();
+  c.roundRect(0, 0, breite, hoehe, RADIUS);
+  c.clip();
+  // Der Schatten ist der Weichzeichner: die Form liegt links außerhalb, nur ihr
+  // Schatten fällt auf die Leinwand. Versatz und Unschärfe gelten in Gerätepixeln.
+  const weg = breite + 400;
+  c.shadowColor = "#000";
+  c.shadowBlur = weich * dpr;
+  c.shadowOffsetX = weg * dpr;
+  c.beginPath();
+  c.rect(-weg - 200, -200, breite + 400, hoehe + 400);
+  c.roundRect(band - weg, band, breite - 2 * band, hoehe - 2 * band, Math.max(RADIUS - band, 0));
+  c.fill("evenodd");
+  return `url("${leinwand.toDataURL("image/png")}")`;
 }
 
 function bauen() {
+  const breite = window.innerWidth, hoehe = window.innerHeight;
+  // Gleiche Größe: nichts tun. Neu bauen nahm dem Rand sonst mitten im Diktat die Sichtbarkeit.
+  const schluessel = `${breite}x${hoehe}@${window.devicePixelRatio}`;
+  if (schluessel === gebaut || !breite || !hoehe) return;
+  gebaut = schluessel;
   rand.replaceChildren();
   warme.length = 0;
-  const breite = window.innerWidth, hoehe = window.innerHeight;
   rand.style.setProperty("--seite", `${Math.ceil(Math.hypot(breite, hoehe))}px`);
   for (const stufe of Object.keys(STUFEN) as Stufe[]) {
     const [band, weich] = STUFEN[stufe];
@@ -74,10 +93,30 @@ function bauen() {
     rand.appendChild(el);
     baender[stufe] = el;
   }
+  zeigeStufe(stufeJetzt, false);
 }
 
-function zeigeStufe(stufe: Stufe | null) {
-  for (const [name, el] of Object.entries(baender)) el.classList.toggle("sichtbar", name === stufe);
+/** Neue Stufe sofort darunter, die alte blendet darüber aus: so wird der Rand
+ *  beim Wechsel nie dunkler (zwei gegenläufige Überblendungen ließen ihn einbrechen). */
+function zeigeStufe(stufe: Stufe | null, weich = true) {
+  stufeJetzt = stufe;
+  for (const [name, el] of Object.entries(baender)) {
+    if (name === stufe) {
+      el.style.zIndex = "0";
+      el.style.transition = "none";
+      el.classList.add("sichtbar");
+      void el.offsetWidth;
+      el.style.transition = "";
+    } else {
+      el.style.zIndex = "1";
+      if (!weich) el.style.transition = "none";
+      el.classList.remove("sichtbar");
+      if (!weich) {
+        void el.offsetWidth;
+        el.style.transition = "";
+      }
+    }
+  }
 }
 
 // -- Zeitgeber, die beim nächsten Zustand verfallen -------------------------
@@ -111,21 +150,35 @@ function feldSetzen(...klassen: string[]) {
   feld.classList.add(...klassen);
 }
 
-// Ein Fortschritt für Kante und Balken, an einer Uhr: beide laufen linear von 0 bis
-// 100 % (Louis, 09.11.2026: „gleichmäßig und sauber durchlaufen“, nicht langsam
-// anfangen, nicht zurückspringen). Rust schickt die erwartete Dauer; wird die
-// Erkennung früher fertig, läuft der Balken im selben Tempo zu Ende, dauert sie
-// länger, wartet er kurz vor dem Ende. Zeitgeber statt requestAnimationFrame.
-const HALT_VOR_ENDE = 0.97;
+// Ein Fortschritt für Kante und Balken, an einer Uhr (Louis, 09.11.2026: „gleichmäßig
+// und sauber durchlaufen“, nicht langsam anfangen, nicht zurückspringen). Rust schickt
+// die erwartete Dauer. Bis 70 % läuft der Balken gleichmäßig, danach ohne Knick
+// immer langsamer Richtung 99 %, bleibt aber nie stehen (13.11.2026: das Anhalten bei
+// 97 % wirkte wie ein Hänger). Ist die Erkennung fertig, läuft er zügig voll.
+// Zeitgeber statt requestAnimationFrame.
+const GLEICHMAESSIG_BIS = 0.7;
+const SCHLUSS_MS = [180, 420] as const;
 let anteilIst = 0;
 let laufStart = 0;
 let laufDauer = 1;
-let laufFertig = false;
 let laufTakt = 0;
 let wennVoll: (() => void) | null = null;
+let endeStart = 0;
+let endeVon = 0;
+let endeDauer = 0;
+
+/** Anteil nach `t` ms bei erwarteter Dauer `d`: gleichmäßig, dann ohne Knick abflachend. */
+function verlauf(t: number, d: number) {
+  const knick = GLEICHMAESSIG_BIS * d;
+  if (t <= knick) return t / d;
+  const rest = 0.99 - GLEICHMAESSIG_BIS;
+  const x = t - knick;
+  // Steigung am Knick gleich 1/d: tau = rest * d
+  return GLEICHMAESSIG_BIS + rest * (x / (x + rest * d));
+}
 
 function zeichnen() {
-  kanteMaske(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst);
+  kanteDicke(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst);
   balken.style.width = `${(anteilIst * 100).toFixed(2)}%`;
 }
 
@@ -140,11 +193,16 @@ function laufen(dauerMs: number) {
   anteilIst = 0;
   laufStart = Date.now();
   laufDauer = Math.max(dauerMs, 1);
-  laufFertig = false;
+  endeStart = 0;
   zeichnen();
   laufTakt = window.setInterval(() => {
-    const a = (Date.now() - laufStart) / laufDauer;
-    anteilIst = Math.min(a, laufFertig ? 1 : HALT_VOR_ENDE);
+    const jetzt = Date.now();
+    if (endeStart) {
+      // Schluss: vom jetzigen Stand gleichmäßig auf 100 %
+      anteilIst = Math.min(1, endeVon + (1 - endeVon) * ((jetzt - endeStart) / endeDauer));
+    } else {
+      anteilIst = verlauf(jetzt - laufStart, laufDauer);
+    }
     zeichnen();
     if (anteilIst >= 1) {
       const danach = wennVoll;
@@ -154,31 +212,23 @@ function laufen(dauerMs: number) {
   }, 16);
 }
 
-/** Erkennung fertig: im selben Tempo bis 100 %, dann `danach`. */
+/** Erkennung fertig: zügig und ohne Sprung bis 100 %, dann `danach`. */
 function laufBeenden(danach: () => void) {
   if (!laufTakt) {
     anteilIst = 1;
     zeichnen();
     return danach();
   }
-  // Uhr so stellen, dass es ohne Sprung vom jetzigen Stand weitergeht
-  laufStart = Date.now() - anteilIst * laufDauer;
-  laufFertig = true;
+  endeVon = anteilIst;
+  endeStart = Date.now();
+  // Nicht langsamer als bisher, aber auch kein Schnappen
+  endeDauer = Math.min(SCHLUSS_MS[1], Math.max(SCHLUSS_MS[0], (1 - anteilIst) * laufDauer));
   wennVoll = danach;
 }
 
-function kanteMaske(dicke: number) {
-  const b = window.innerWidth, h = window.innerHeight, d = dicke, r = 34;
-  const innen =
-    `M${d + r},${d} H${b - d - r} A${r},${r} 0 0 1 ${b - d},${d + r} V${h - d - r} ` +
-    `A${r},${r} 0 0 1 ${b - d - r},${h - d} H${d + r} A${r},${r} 0 0 1 ${d},${h - d - r} ` +
-    `V${d + r} A${r},${r} 0 0 1 ${d + r},${d} Z`;
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${b}" height="${h}" viewBox="0 0 ${b} ${h}">` +
-    `<path fill="#000" fill-rule="evenodd" d="M0,0 H${b} V${h} H0 Z ${innen}"/></svg>`;
-  const m = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-  kante.style.setProperty("-webkit-mask-image", m);
-  kante.style.setProperty("mask-image", m);
+/** Grüne Kante: nur eine Zahl je Bild, die Form zeichnet CSS (gleicher Radius wie der Farbrand) */
+function kanteDicke(dicke: number) {
+  kante.style.setProperty("--dicke", `${dicke.toFixed(2)}px`);
 }
 
 function hoert(mitFeld: boolean) {
@@ -217,7 +267,8 @@ function erkennt(mitFeld: boolean, dauer: number) {
     if (feld.classList.contains("hoert")) {
       feld.classList.remove("hoert");
       feld.classList.add("an", "erkennt");
-      spaeter(420, () => feld.classList.add("balken-da"));
+      // Der Punkt ist dann am Balkenanfang angekommen und verschwindet im Balken
+      spaeter(PUNKT_ZUM_BALKEN_MS, () => feld.classList.add("balken-da"));
     } else {
       // Umwandeln aus der Schnellwahl: gleich wieder der Balken
       feldSetzen("an", "erkennt", "balken-da");
@@ -295,6 +346,12 @@ if (vorschau) {
   document.head.appendChild(stil);
   const [, zustand, wert] = vorschau;
   if (zustand === "hoert") hoert(true);
+  if (zustand === "kante") {
+    erkennt(true, 1000);
+    laufAnhalten();
+    anteilIst = Number(wert ?? 0);
+    zeichnen();
+  }
   if (zustand === "erkennt") {
     hoert(true);
     erkennt(true, 1000);
