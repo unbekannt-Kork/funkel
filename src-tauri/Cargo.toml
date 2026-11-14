@@ -1,6 +1,6 @@
 [package]
 name = "funkel"
-version = "0.3.3"
+version = "0.3.4"
 description = "Diktieren mit zwei Tipps, offline, auf Mac und Windows"
 authors = ["Theo Studio"]
 license = "MIT"
