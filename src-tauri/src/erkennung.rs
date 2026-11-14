@@ -67,6 +67,10 @@ impl Erkenner {
         p.set_language(Some(sprache));
         p.set_translate(false);
         p.set_no_context(true);
+        // Kein Temperatur-Rückfall: bei unsicherem Ergebnis rechnete Whisper bis zu
+        // fünfmal neu. Das waren die Spitzen von 3–8 s nach dem Stopp (Log bis
+        // 13.11.2026: 3,8 s Rest in 6,5 s, 18 s Rest in 8,0 s statt etwa 1 s).
+        p.set_temperature_inc(0.0);
         p.set_suppress_blank(true);
         p.set_print_special(false);
         p.set_print_progress(false);
@@ -90,7 +94,7 @@ impl Erkenner {
         Ok((aufraeumen(&text), abschnitte))
     }
 
-    /// Sprache des Tons, wenn Whisper sich sicher ist. Kostet einen eigenen Durchgang —
+    /// Deutsch oder Englisch, je nachdem, was wahrscheinlicher ist. Kostet einen eigenen Durchgang —
     /// deshalb während der Aufnahme: bei „automatisch“ verdoppelte er sonst nach dem
     /// Stopp die Wartezeit (gemessen 09.11.2026: 1,32–1,61 s statt 0,66–0,83 s).
     pub fn sprache_erkennen(&self, ton: &[f32]) -> Option<String> {
@@ -99,16 +103,20 @@ impl Erkenner {
         let kerne = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
         zustand.pcm_to_mel(ton, kerne).ok()?;
         let (_, wahrscheinlich) = zustand.lang_detect(0, kerne).ok()?;
-        sicher_genug(&wahrscheinlich).and_then(|id| whisper_rs::get_lang_str(id).map(str::to_string))
+        let p = |kuerzel: &str| whisper_rs::get_lang_id(kuerzel).and_then(|id| wahrscheinlich.get(id as usize).copied());
+        Some(haupt_sprache(p("de")?, p("en")?).to_string())
     }
 }
 
-/// Mindestens 80 % für eine Sprache, sonst lieber weiter automatisch
-const SPRACHE_SICHER: f32 = 0.8;
-
-fn sicher_genug(wahrscheinlich: &[f32]) -> Option<i32> {
-    let (id, p) = wahrscheinlich.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1))?;
-    (*p >= SPRACHE_SICHER).then_some(id as i32)
+/// „Automatisch“ heißt Deutsch oder Englisch. Frei über alle Sprachen hielt Whisper
+/// deutsches Diktat für Russisch oder blieb unsicher und rechnete doppelt (Log bis
+/// 13.11.2026: 35-mal unentschieden, einmal Russisch). Andere Sprachen fest einstellen.
+fn haupt_sprache(deutsch: f32, englisch: f32) -> &'static str {
+    if englisch > deutsch {
+        "en"
+    } else {
+        "de"
+    }
 }
 
 /// Ordnet jedem Abschnitt die Person zu, die in seiner Zeit am längsten spricht,
@@ -270,10 +278,10 @@ mod tests {
     }
 
     #[test]
-    fn sprache_nur_wenn_sicher() {
-        assert_eq!(sicher_genug(&[0.05, 0.9, 0.05]), Some(1));
-        assert_eq!(sicher_genug(&[0.4, 0.5, 0.1]), None);
-        assert_eq!(sicher_genug(&[]), None);
+    fn automatisch_ist_deutsch_oder_englisch() {
+        assert_eq!(haupt_sprache(0.3, 0.1), "de");
+        assert_eq!(haupt_sprache(0.1, 0.6), "en");
+        assert_eq!(haupt_sprache(0.0, 0.0), "de", "unentschieden bleibt Deutsch");
     }
 
     #[test]

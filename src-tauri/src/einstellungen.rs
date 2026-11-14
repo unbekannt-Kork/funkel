@@ -10,7 +10,7 @@ pub struct Einstellungen {
     pub taste: Option<u32>,
     /// Text nach dem Diktat sofort einfügen (sonst nur Zwischenablage)
     pub einfuegen: bool,
-    /// `auto`, `de` oder `en`
+    /// `auto` (Deutsch oder Englisch) oder eine feste Sprache
     pub sprache: String,
     pub autostart: bool,
     /// Zeitfenster für den Doppeltipp
@@ -80,10 +80,10 @@ pub fn vorlage(sprache: &str) -> String {
     let mut teile = vec![begriffe()];
     // Füllwörter als Stilvorbild nur für die eigene Sprache, sonst zieht die Vorlage
     // Whisper in diese Sprache
-    if matches!(sprache, "auto" | "de") {
+    if sprache == "de" {
         teile.push(crate::modus::STIL_DE.into());
     }
-    if matches!(sprache, "auto" | "en") {
+    if sprache == "en" {
         teile.push(crate::modus::STIL_EN.into());
     }
     let text = teile.into_iter().filter(|t| !t.is_empty()).collect::<Vec<_>>().join(" ");

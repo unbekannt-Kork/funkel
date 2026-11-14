@@ -105,8 +105,10 @@ fn zeit_von(pfad: &Path) -> Option<NaiveDateTime> {
     NaiveDateTime::parse_from_str(pfad.file_stem()?.to_str()?, ZEITFORMAT).ok()
 }
 
-/// Neueste zuerst. `ausser` = die gerade laufende Aufnahme.
-pub fn eintraege(ausser: Option<&Path>) -> Vec<Eintrag> {
+/// Neueste zuerst, höchstens `hoechstens`. `ausser` = die gerade laufende Aufnahme.
+/// Texte werden nur für diese gelesen: das Einstellungsfenster fragt alle 3 s, und
+/// im Ordner lagen 1291 Dateien (14.11.2026).
+pub fn eintraege(ausser: Option<&Path>, hoechstens: usize) -> Vec<Eintrag> {
     let Ok(dateien) = fs::read_dir(ordner()) else { return vec![] };
     let mut wavs: Vec<PathBuf> = dateien
         .filter_map(|d| d.ok().map(|d| d.path()))
@@ -116,6 +118,7 @@ pub fn eintraege(ausser: Option<&Path>) -> Vec<Eintrag> {
     wavs.sort();
     wavs.reverse();
     wavs.into_iter()
+        .take(hoechstens)
         .map(|p| Eintrag {
             zeit: zeit_von(&p).map(|z| z.format("%d.%m. %H:%M").to_string()).unwrap_or_default(),
             sekunden: sekunden(&p),
@@ -126,7 +129,7 @@ pub fn eintraege(ausser: Option<&Path>) -> Vec<Eintrag> {
 }
 
 pub fn unfertige(ausser: Option<&Path>) -> Vec<Eintrag> {
-    eintraege(ausser).into_iter().filter(|e| e.text.is_none() && e.sekunden > 0).collect()
+    eintraege(ausser, usize::MAX).into_iter().filter(|e| e.text.is_none() && e.sekunden > 0).collect()
 }
 
 /// Löscht Ton und Text, die älter als `tage` sind (Datensparsamkeit). 0 = nie.
@@ -136,7 +139,7 @@ pub fn aufraeumen(tage: u32) -> usize {
     }
     let grenze = Local::now().naive_local() - chrono::Duration::days(tage as i64);
     let mut weg = 0;
-    for e in eintraege(None) {
+    for e in eintraege(None, usize::MAX) {
         let p = PathBuf::from(&e.pfad);
         if zeit_von(&p).is_some_and(|z| z < grenze) {
             let _ = fs::remove_file(text_pfad(&p));

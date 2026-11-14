@@ -11,7 +11,7 @@ Speech recognition runs locally with Whisper — nothing leaves your computer.*
 - **Man sieht, dass es zuhört:** Ein weicher Farbrand läuft um den Bildschirm,
   unten erscheint ein kleines Feld mit Laufzeit. Bei der Erkennung wird der Rand
   grün und das Feld zum Balken, am Ende steht „✓ Fertig“.
-- **Deutsch und Englisch** werden automatisch erkannt, andere Sprachen ebenso.
+- **Deutsch und Englisch** werden automatisch erkannt, andere Sprachen fest einstellbar.
 - **Wörterbuch** für Namen und Fachbegriffe, damit sie richtig geschrieben werden.
 
 ## Installieren

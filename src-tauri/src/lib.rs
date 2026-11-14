@@ -45,8 +45,7 @@ fn aktuelle_taste(werte: &Einstellungen) -> u32 {
 fn status(ablauf: State<Arc<Ablauf>>) -> Status {
     let werte = ablauf.einstellungen.lock().unwrap().clone();
     let laufende = ablauf.laufende();
-    let mut verlauf = ablage::eintraege(laufende.as_deref());
-    verlauf.truncate(30);
+    let verlauf = ablage::eintraege(laufende.as_deref(), 30);
     Status {
         verlauf,
         taste_name: plattform::tasten_name(aktuelle_taste(&werte)),
@@ -76,14 +75,6 @@ fn wiederherstellen(ablauf: State<Arc<Ablauf>>, pfad: String) -> Result<(), Stri
         return Err("Unbekannte Datei".into());
     }
     ablauf.inner().clone().wiederherstellen(p)
-}
-
-/// Aus dem Randfenster im Moment des Aufblitzens, damit Bild und Ton zusammenfallen
-#[tauri::command]
-fn ton_fertig(ablauf: State<Arc<Ablauf>>) {
-    if ablauf.einstellungen.lock().unwrap().ton {
-        plattform::ton_fertig();
-    }
 }
 
 #[tauri::command]
@@ -346,7 +337,6 @@ pub fn run() {
             speichern,
             wiederherstellen,
             kopieren,
-            ton_fertig,
             ordner_oeffnen,
             woerterbuch_speichern,
             freigabe_oeffnen,

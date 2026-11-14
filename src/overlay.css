@@ -8,13 +8,12 @@
   --ki-orange: #ffba71;
   --ki-lila: #c686ff;
   --rot: rgb(255 82 72);
-  /* Erkennung: eine einzige, klare Farbe */
-  --gruen: #30d158;
+  /* Erkennung und Fertig: Theo-Erfolgsgrün der dunklen Fassung */
+  --gruen: #3fbf7f;
   --kurve: cubic-bezier(0.22, 1, 0.36, 1);
   /* gleich RADIUS in overlay.ts */
   --radius: 28px;
-  /* Punkt → Balken, gleich PUNKT_ZUM_BALKEN_MS in overlay.ts */
-  --wandel: 0.32s;
+  --wandel: 0.26s;
 }
 
 html, body {
@@ -23,7 +22,7 @@ html, body {
   height: 100%;
   overflow: hidden;
   background: transparent;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
@@ -79,26 +78,25 @@ html, body {
 }
 
 /* -------------------------------------------------------- grüne Kante -- */
-/* Erkennung: klare grüne Kante ohne Verlauf, wird mit dem Fortschritt breiter.
-   Gleiche runde Form wie der Farbrand; der Innenrand folgt dem Radius von selbst.
-   overlay.ts setzt je Bild nur --dicke. */
+/* Erkennung: ruhige grüne Kante in der Form des Farbrands, atmet leicht, bis der
+   Text da ist. Keine Breite nach Fortschritt mehr — es gibt keinen ehrlichen. */
 #kante {
-  --dicke: 3px;
   position: fixed;
   inset: 0;
   pointer-events: none;
   border-radius: var(--radius);
-  box-shadow: inset 0 0 0 var(--dicke) var(--gruen);
+  box-shadow: inset 0 0 0 6px var(--gruen);
   opacity: 0;
-  transition: opacity 0.25s var(--kurve);
+  transition: opacity 0.26s var(--kurve);
 }
-#kante.an { opacity: 1; }
-#kante.weg { opacity: 0; transition-duration: 0.5s; }
+#kante.an { opacity: 1; animation: kante-atmen 1.6s ease-in-out 0.26s infinite; }
+#kante.weg { opacity: 0; transition-duration: 0.48s; }
+@keyframes kante-atmen { 50% { opacity: 0.55; } }
 
 @keyframes drehen { to { transform: rotate(-360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .kegel { animation: none; }
+  .kegel, #kante.an, #feld.erkennt #balken { animation: none; }
 }
 
 /* ---------------------------------------------------------------- Feld -- */
@@ -109,9 +107,10 @@ html, body {
   width: 220px;
   height: 56px;
   margin-left: -110px;
-  border-radius: 12px;
-  background: rgb(13 13 13 / 0.94);
-  border: 1px solid rgb(255 255 255 / 0.12);
+  /* Theo dunkel: Fläche #111114, Rahmen #37373b, Radius 4 */
+  border-radius: 4px;
+  background: rgb(17 17 20 / 0.96);
+  border: 1px solid #37373b;
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
   box-sizing: border-box;
   color: #fff;
@@ -158,7 +157,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 17px;
+  font-size: 16px;
   white-space: nowrap;
   transition: opacity 0.3s var(--kurve);
 }
@@ -177,39 +176,29 @@ html, body {
   height: 4px;
   border-radius: 3px;
   background: rgb(255 255 255 / 0.14);
+  overflow: hidden;
   opacity: 0;
   transition: opacity var(--wandel) var(--kurve);
 }
+/* Läuft durch, bis das Ergebnis da ist */
 #balken {
+  width: 34%;
   height: 100%;
-  width: 0;
-  border-radius: 3px;
-  background: var(--gruen);
-  /* Breite setzt overlay.ts im selben Takt wie die Kante */
-}
-
-/* Hört zu → Balken: der rote Punkt rutscht genau an den Balkenanfang, wird grün und
-   so groß wie die Spur; der Balken wächst aus ihm heraus, er liegt farbgleich darauf. */
-#feld.erkennt #punkt, #feld.fertig #punkt {
-  left: 22px;
-  top: 26px;
-  width: 4px;
-  height: 4px;
   border-radius: 2px;
   background: var(--gruen);
-  transform: none;
-  animation: none;
 }
-#feld.erkennt #zeile, #feld.fertig #zeile { opacity: 0; transition-duration: 0.18s; }
+#feld.erkennt #balken { animation: durchlaufen 1.1s var(--kurve) infinite; }
+@keyframes durchlaufen {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+/* Hört zu → erkennt: Punkt und Zeile weichen, die Spur erscheint */
+#feld.erkennt #punkt, #feld.fertig #punkt { opacity: 0; animation: none; transform: scale(0.4); background: var(--gruen); }
+#feld.erkennt #zeile, #feld.fertig #zeile { opacity: 0; transition-duration: 0.12s; }
 #feld.erkennt #spur { opacity: 1; }
-#feld.erkennt.balken-da #punkt { opacity: 0; }
 
-/* Fertig: Balken läuft voll, zieht sich zur Mitte, „✓ Fertig" gleitet hoch */
-#feld.fertig #punkt { opacity: 0; }
-#feld.fertig #spur { opacity: 1; }
-#feld.fertig.zusammen #spur { opacity: 0; transition-duration: 0.3s; }
-#feld.fertig.zusammen #balken { margin-left: 50%; width: 0 !important; transition: width 0.3s var(--kurve), margin 0.3s var(--kurve); }
-
+/* Fertig: sofort „✓ Fertig“ */
 #haken {
   position: absolute;
   inset: 0;
@@ -217,14 +206,14 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity 0.3s var(--kurve), transform 0.3s var(--kurve);
+  transition: opacity 0.12s var(--kurve), transform 0.26s var(--kurve);
 }
 .haken-zeichen { color: var(--gruen); }
-#feld.zusammen #haken { opacity: 1; transform: none; }
+#feld.fertig #haken { opacity: 1; transform: none; }
 
 /* Schnellwahl nach dem Fertig: Ziffer drücken wandelt dieselbe Aufnahme um */
 #wahl {
@@ -243,14 +232,14 @@ html, body {
   align-items: center;
   gap: 7px;
   padding: 0 9px;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   color: rgb(255 255 255 / 0.55);
   white-space: nowrap;
 }
 /* Ziffer klein und leise davor, wie die Laufzeit neben „Hört zu“ */
 .wahl-knopf kbd {
-  font: 500 15px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 500 14px ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   color: rgb(255 255 255 / 0.45);
 }

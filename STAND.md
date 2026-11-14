@@ -1,2 +1,3 @@
 - 13.11.2026: Funkel 0.3.1 — Taub-Wächter für den Abgriff, Einblendung der Modi abschaltbar, Anzeige „nichts“; installiert auf Louis' Mac
 - 13.11.2026: Funkel 0.3.2 — Rand und Kante rundum gleich, Ecken konzentrisch rund, Balken ohne Stillstand, Punkt geht in den Balken über
+- 14.11.2026: Funkel 0.3.3 — Fertig und Ton sofort (kein Schätzbalken), Whisper ohne Temperatur-Rückfall, automatisch = Deutsch oder Englisch, Einstellungen im Theo-Fundament; installiert auf Louis' Mac
