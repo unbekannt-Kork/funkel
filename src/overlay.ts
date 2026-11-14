@@ -1,11 +1,10 @@
 // Rand und Feld eines Bildschirms. Rust schickt den Zustand, hier wird nur gezeigt.
-import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 type Zustand =
   | { phase: "hoert"; feld: boolean }
   | { phase: "pegel"; wert: number }
-  | { phase: "erkennt"; feld: boolean; dauer: number }
+  | { phase: "erkennt"; feld: boolean }
   | { phase: "fertig"; feld: boolean; modi: string[]; aktiv: number }
   | { phase: "aus" }
   | { phase: "fehler"; feld: boolean; text: string };
@@ -19,21 +18,15 @@ type Stufe = keyof typeof STUFEN;
 // außen eckig und innen 33 px rund machte die Ecken dick und „abgeknackt“).
 const RADIUS = 28;
 const ANLAUF_MS = 1300; // Start: kurz breit, dann schmal im Hintergrund
-const KANTE_STEHT_MS = 250; // voll und grün kurz stehen lassen, dann ausblenden
-// Grüne Kante: Breite in Pixeln, wächst mit dem Fortschritt
-const KANTE_START = 3;
-const KANTE_ENDE = 14;
 const FERTIG_STEHT_MS = 2500;
 const FEHLER_STEHT_MS = 5000;
 const WAHL_AB_MS = 900; // erst „✓ Fertig“ lesen lassen, dann die Modi zeigen
 const WAHL_MS = 7100; // passt zu WAHL im Rust-Ablauf (8 s ab Fertig)
-const PUNKT_ZUM_BALKEN_MS = 320; // passt zu --wandel in overlay.css
 
 const rand = document.getElementById("rand")!;
 const kante = document.getElementById("kante")!;
 const feld = document.getElementById("feld")!;
 const uhr = document.getElementById("uhr")!;
-const balken = document.getElementById("balken")!;
 const satz = document.getElementById("satz")!;
 const wahl = document.getElementById("wahl")!;
 
@@ -134,8 +127,6 @@ function alleAbbrechen() {
 let uhrTakt = 0;
 // Einstellung „Anzeige“: false = nur das Feld, kein Rahmen
 let mitRand = true;
-// Dieses Fenster gehört zum Bildschirm des Diktats (für den Ton, auch ohne Feld)
-let hier = false;
 
 function uhrText(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -150,91 +141,13 @@ function feldSetzen(...klassen: string[]) {
   feld.classList.add(...klassen);
 }
 
-// Ein Fortschritt für Kante und Balken, an einer Uhr (Louis, 09.11.2026: „gleichmäßig
-// und sauber durchlaufen“, nicht langsam anfangen, nicht zurückspringen). Rust schickt
-// die erwartete Dauer. Bis 70 % läuft der Balken gleichmäßig, danach ohne Knick
-// immer langsamer Richtung 99 %, bleibt aber nie stehen (13.11.2026: das Anhalten bei
-// 97 % wirkte wie ein Hänger). Ist die Erkennung fertig, läuft er zügig voll.
-// Zeitgeber statt requestAnimationFrame.
-const GLEICHMAESSIG_BIS = 0.7;
-const SCHLUSS_MS = [180, 420] as const;
-let anteilIst = 0;
-let laufStart = 0;
-let laufDauer = 1;
-let laufTakt = 0;
-let wennVoll: (() => void) | null = null;
-let endeStart = 0;
-let endeVon = 0;
-let endeDauer = 0;
-
-/** Anteil nach `t` ms bei erwarteter Dauer `d`: gleichmäßig, dann ohne Knick abflachend. */
-function verlauf(t: number, d: number) {
-  const knick = GLEICHMAESSIG_BIS * d;
-  if (t <= knick) return t / d;
-  const rest = 0.99 - GLEICHMAESSIG_BIS;
-  const x = t - knick;
-  // Steigung am Knick gleich 1/d: tau = rest * d
-  return GLEICHMAESSIG_BIS + rest * (x / (x + rest * d));
-}
-
-function zeichnen() {
-  kanteDicke(KANTE_START + (KANTE_ENDE - KANTE_START) * anteilIst);
-  balken.style.width = `${(anteilIst * 100).toFixed(2)}%`;
-}
-
-function laufAnhalten() {
-  if (laufTakt) clearInterval(laufTakt);
-  laufTakt = 0;
-  wennVoll = null;
-}
-
-function laufen(dauerMs: number) {
-  laufAnhalten();
-  anteilIst = 0;
-  laufStart = Date.now();
-  laufDauer = Math.max(dauerMs, 1);
-  endeStart = 0;
-  zeichnen();
-  laufTakt = window.setInterval(() => {
-    const jetzt = Date.now();
-    if (endeStart) {
-      // Schluss: vom jetzigen Stand gleichmäßig auf 100 %
-      anteilIst = Math.min(1, endeVon + (1 - endeVon) * ((jetzt - endeStart) / endeDauer));
-    } else {
-      anteilIst = verlauf(jetzt - laufStart, laufDauer);
-    }
-    zeichnen();
-    if (anteilIst >= 1) {
-      const danach = wennVoll;
-      laufAnhalten();
-      danach?.();
-    }
-  }, 16);
-}
-
-/** Erkennung fertig: zügig und ohne Sprung bis 100 %, dann `danach`. */
-function laufBeenden(danach: () => void) {
-  if (!laufTakt) {
-    anteilIst = 1;
-    zeichnen();
-    return danach();
-  }
-  endeVon = anteilIst;
-  endeStart = Date.now();
-  // Nicht langsamer als bisher, aber auch kein Schnappen
-  endeDauer = Math.min(SCHLUSS_MS[1], Math.max(SCHLUSS_MS[0], (1 - anteilIst) * laufDauer));
-  wennVoll = danach;
-}
-
-/** Grüne Kante: nur eine Zahl je Bild, die Form zeichnet CSS (gleicher Radius wie der Farbrand) */
-function kanteDicke(dicke: number) {
-  kante.style.setProperty("--dicke", `${dicke.toFixed(2)}px`);
-}
+// Nach dem Stopp gibt es keinen Fortschritt zu zeigen, nur „arbeitet“: der Balken
+// läuft durch, bis das Ergebnis da ist (Theo-Regel „Lädt“). Vorher lief er nach
+// einer geschätzten Dauer und kroch ab 70 % immer langsamer — dauerte die Erkennung
+// länger als geschätzt, wirkte Funkel stockend, und der Ton kam erst danach (14.11.2026).
 
 function hoert(mitFeld: boolean) {
   alleAbbrechen();
-  laufAnhalten();
-  erkenntLaeuft = false;
   kante.className = "";
   rand.className = mitRand ? "an" : "";
   zeigeStufe("breit");
@@ -242,8 +155,6 @@ function hoert(mitFeld: boolean) {
   if (mitFeld) {
     const start = Date.now();
     uhr.textContent = "0:00";
-    anteilIst = 0;
-    zeichnen();
     feldSetzen("hoert");
     spaeter(20, () => feld.classList.add("an"));
     uhrTakt = window.setInterval(() => (uhr.textContent = uhrText(Date.now() - start)), 250);
@@ -252,27 +163,18 @@ function hoert(mitFeld: boolean) {
   }
 }
 
-let erkenntLaeuft = false;
-
-function erkennt(mitFeld: boolean, dauer: number) {
-  // Nur der erste Aufruf startet; ein zweiter darf den Lauf nicht zurücksetzen
-  if (erkenntLaeuft) return;
-  erkenntLaeuft = true;
+function erkennt(mitFeld: boolean) {
   alleAbbrechen();
-  // Farbschein aus, klare grüne Kante an
+  // Farbschein aus, ruhige grüne Kante an
   rand.className = "";
   kante.className = mitRand ? "an" : "";
-  laufen(dauer);
-  if (mitFeld) {
-    if (feld.classList.contains("hoert")) {
-      feld.classList.remove("hoert");
-      feld.classList.add("an", "erkennt");
-      // Der Punkt ist dann am Balkenanfang angekommen und verschwindet im Balken
-      spaeter(PUNKT_ZUM_BALKEN_MS, () => feld.classList.add("balken-da"));
-    } else {
-      // Umwandeln aus der Schnellwahl: gleich wieder der Balken
-      feldSetzen("an", "erkennt", "balken-da");
-    }
+  if (!mitFeld) return;
+  if (feld.classList.contains("hoert")) {
+    feld.classList.remove("hoert");
+    feld.classList.add("an", "erkennt");
+  } else {
+    // Umwandeln aus der Schnellwahl: gleich wieder der Balken
+    feldSetzen("an", "erkennt");
   }
 }
 
@@ -289,31 +191,23 @@ function wahlZeigen(modi: string[], aktiv: number) {
   );
 }
 
+/** Sofort, ohne Nachlauf: der Text liegt schon in der Zwischenablage, der Ton kam aus Rust. */
 function fertig(mitFeld: boolean, modi: string[] = [], aktiv = 0) {
-  erkenntLaeuft = false;
   alleAbbrechen();
-  // Balken und Kante laufen gleichmäßig voll, dann ist die Kante breit und grün und blendet aus
-  laufBeenden(() => {
-    if (hier) invoke("ton_fertig").catch(() => {});
-    spaeter(KANTE_STEHT_MS, () => (kante.className = mitRand ? "weg" : ""));
-    if (!mitFeld) return;
-    feld.classList.remove("erkennt", "balken-da", "hoert");
-    feld.classList.add("an", "fertig");
-    spaeter(180, () => feld.classList.add("zusammen"));
-    if (modi.length) {
-      wahlZeigen(modi, aktiv);
-      spaeter(WAHL_AB_MS, () => feld.classList.add("wahl"));
-      spaeter(WAHL_AB_MS + WAHL_MS, () => feld.classList.replace("an", "weg"));
-    } else {
-      spaeter(FERTIG_STEHT_MS, () => feld.classList.replace("an", "weg"));
-    }
-  });
+  kante.className = mitRand ? "weg" : "";
+  if (!mitFeld) return;
+  feldSetzen("an", "fertig");
+  if (modi.length) {
+    wahlZeigen(modi, aktiv);
+    spaeter(WAHL_AB_MS, () => feld.classList.add("wahl"));
+    spaeter(WAHL_AB_MS + WAHL_MS, () => feld.classList.replace("an", "weg"));
+  } else {
+    spaeter(FERTIG_STEHT_MS, () => feld.classList.replace("an", "weg"));
+  }
 }
 
 function aus() {
   alleAbbrechen();
-  laufAnhalten();
-  erkenntLaeuft = false;
   rand.className = "";
   kante.className = "";
   feld.classList.replace("an", "weg");
@@ -321,8 +215,6 @@ function aus() {
 
 function fehler(mitFeld: boolean, text: string) {
   alleAbbrechen();
-  laufAnhalten();
-  erkenntLaeuft = false;
   rand.className = "";
   kante.className = "";
   if (!mitFeld) return;
@@ -336,7 +228,7 @@ bauen();
 window.addEventListener("resize", bauen);
 
 // Vorschau ohne Tauri, zum Prüfen in einem unsichtbaren Fenster:
-// overlay.html#vorschau=hoert | erkennt-0.4 | wahl-1
+// overlay.html#vorschau=hoert | erkennt | fertig | wahl-1
 const vorschau = location.hash.match(/^#vorschau=(\w+)(?:-([\d.]+))?/);
 if (vorschau) {
   document.body.style.background = "#1c1c22"; // nur zum Ansehen
@@ -346,22 +238,14 @@ if (vorschau) {
   document.head.appendChild(stil);
   const [, zustand, wert] = vorschau;
   if (zustand === "hoert") hoert(true);
-  if (zustand === "kante") {
-    erkennt(true, 1000);
-    laufAnhalten();
-    anteilIst = Number(wert ?? 0);
-    zeichnen();
-  }
   if (zustand === "erkennt") {
     hoert(true);
-    erkennt(true, 1000);
-    laufAnhalten();
-    anteilIst = Number(wert ?? 0);
-    zeichnen();
+    erkennt(true);
   }
+  if (zustand === "fertig") fertig(true);
   if (zustand === "wahl") {
     wahlZeigen(["Wortgetreu", "Bereinigt", "Mail", "WhatsApp", "Protokoll"], Number(wert ?? 0));
-    feldSetzen("an", "fertig", "zusammen", "wahl");
+    feldSetzen("an", "fertig", "wahl");
   }
 }
 
@@ -369,11 +253,10 @@ if (vorschau) {
 // die der anderen Bildschirme mit, dann stand das Feld überall.
 if (!vorschau) getCurrentWebviewWindow().listen<Zustand>("zustand", ({ payload: z }) => {
   if ("rand" in z) mitRand = (z as { rand?: boolean }).rand !== false;
-  if ("hier" in z) hier = (z as { hier?: boolean }).hier === true;
   switch (z.phase) {
     case "hoert": return hoert(z.feld);
     case "pegel": return warme.forEach((w) => (w.style.opacity = String(z.wert)));
-    case "erkennt": return erkennt(z.feld, z.dauer);
+    case "erkennt": return erkennt(z.feld);
     case "fertig": return fertig(z.feld, z.modi, z.aktiv);
     case "aus": return aus();
     case "fehler": return fehler(z.feld, z.text);

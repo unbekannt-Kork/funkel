@@ -20,22 +20,6 @@ const STILLE: f32 = 0.002;
 /// So lange nach „Fertig“ wählen die Ziffern 1–5 einen anderen Modus; jede andere Taste beendet die Wahl
 const WAHL: Duration = Duration::from_millis(8000);
 
-/// Erwartete Dauer bis „Fertig“ für die Anzeige: Balken und Kante laufen danach
-/// gleichmäßig durch. `ton_s`: zu erkennender Ton, `None` = nur umformen.
-/// Whisper je angefangene 30 s etwa 0,75 s (gemessen 09.11.2026: 0,66–0,83 s),
-/// dazu 0,35 s für Stoppen und den letzten Abschnitt des Mitlaufs (13.11.2026:
-/// Rest im Mittel 0,9 s, jedes zehnte Diktat 1,5 s und mehr). Umformen 0,9–2,4 s,
-/// Sprechertrennung etwa 5 s. Dauert es länger, wird der Balken langsamer, steht aber nie.
-fn erwartet_ms(modus: Modus, ton_s: Option<f32>) -> u64 {
-    let whisper = ton_s.map_or(0.0, |s| 350.0 + 750.0 * (s / 30.0).ceil().max(1.0));
-    let umformen = match modus {
-        Modus::Protokoll => 2000.0 + 5000.0,
-        m if m.anweisung().is_some() => 2000.0,
-        _ => 0.0,
-    };
-    (whisper + umformen).max(900.0) as u64
-}
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Phase {
     Bereit,
@@ -143,9 +127,7 @@ impl Ablauf {
             overlay::senden(&self.app, &feld, |_| json!({ "phase": "aus" }));
             return;
         }
-        let modus = self.einstellungen.lock().unwrap().modus;
-        let dauer = erwartet_ms(modus, Some(seit.elapsed().as_secs_f32().min(28.0)));
-        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "dauer": dauer }));
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f }));
         let ich = self.clone();
         let mitlauf = self.mitlauf.lock().unwrap().take();
         std::thread::spawn(move || {
@@ -172,9 +154,7 @@ impl Ablauf {
         overlay::sicherstellen(&self.app);
         let feld = overlay::feld_fenster(&self.app);
         *self.feld.lock().unwrap() = feld.clone();
-        let modus = self.einstellungen.lock().unwrap().modus;
-        let dauer = erwartet_ms(modus, Some(ton.len() as f32 / aufnahme::RATE as f32));
-        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "dauer": dauer }));
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f }));
         protokoll(&format!("Wiederherstellen: {}", pfad.display()));
         let ich = self.clone();
         std::thread::spawn(move || ich.erkennen(ton, &pfad, feld));
@@ -208,7 +188,12 @@ impl Ablauf {
         // Stille am Ende nicht an Whisper geben: dort erfindet es Schlusssätze
         let rest_bis = (rest_ab + erkennung::sprechen_endet(&ton[rest_ab..], aufnahme::RATE as usize)).max(rest_ab);
         let stuecke_vorab = vorab.abschnitte.len();
-        let sprache = vorab.sprache.clone().unwrap_or(werte.sprache.clone());
+        // Kurze Diktate: der Mitlauf kam nicht dazu, die Sprache zu bestimmen
+        let sprache = match vorab.sprache.clone() {
+            Some(s) => s,
+            None if werte.sprache == "auto" => self.erkenner.sprache_erkennen(&ton[..rest_bis]).unwrap_or_else(|| "de".into()),
+            None => werte.sprache.clone(),
+        };
         // Weniger als 0,3 s Sprache im Rest: nichts mehr zu erkennen, nur das Vorab zählt
         let rest_erkennen = rest_bis.saturating_sub(rest_ab) >= aufnahme::RATE as usize * 3 / 10;
         let rest_ergebnis = if rest_erkennen {
@@ -306,8 +291,15 @@ impl Ablauf {
             std::thread::sleep(Duration::from_millis(80));
             plattform::einfuegen();
         }
-        // Schnellwahl abgeschaltet: keine Modi zeigen, Ziffern bleiben Ziffern
-        let modi_zeigen = self.einstellungen.lock().unwrap().modi_zeigen;
+        // Ton und „Fertig“ im selben Moment, sobald der Text in der Zwischenablage liegt.
+        // Vorher spielte die Anzeige den Ton erst am Ende ihrer Animation.
+        let (modi_zeigen, ton) = {
+            let w = self.einstellungen.lock().unwrap();
+            (w.modi_zeigen, w.ton)
+        };
+        if ton {
+            plattform::ton_fertig();
+        }
         let namen: Vec<&str> = if modi_zeigen { modus::ALLE.iter().map(|m| m.name()).collect() } else { Vec::new() };
         let aktiv = modus::ALLE.iter().position(|m| *m == modus).unwrap_or(0);
         overlay::senden(&self.app, feld, |f| json!({ "phase": "fertig", "feld": f, "modi": namen, "aktiv": aktiv }));
@@ -333,8 +325,7 @@ impl Ablauf {
             *phase = Phase::Erkennt;
         }
         let feld = self.feld.lock().unwrap().clone();
-        let dauer = erwartet_ms(modus, None);
-        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f, "dauer": dauer }));
+        overlay::senden(&self.app, &feld, |f| json!({ "phase": "erkennt", "feld": f }));
         // Schon eingefügter Text würde doppelt stehen: umgewandelt nur in die Zwischenablage
         self.abliefern(modus, false, &feld);
     }
@@ -361,19 +352,5 @@ impl Ablauf {
         let feld = self.feld.lock().unwrap().clone();
         overlay::senden(&self.app, &feld, |f| json!({ "phase": "fehler", "feld": f, "text": text }));
         let _ = self.app.emit("status-geaendert", ());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn anzeige_dauer_passt_zum_modus() {
-        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(5.0)), 1100);
-        assert_eq!(erwartet_ms(Modus::Wortgetreu, Some(45.0)), 1850);
-        assert_eq!(erwartet_ms(Modus::Bereinigt, Some(5.0)), 3100);
-        assert_eq!(erwartet_ms(Modus::Bereinigt, None), 2000);
-        assert!(erwartet_ms(Modus::Protokoll, Some(5.0)) > erwartet_ms(Modus::Bereinigt, Some(5.0)));
     }
 }

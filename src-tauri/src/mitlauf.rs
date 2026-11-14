@@ -27,10 +27,8 @@ pub struct Vorab {
     pub sprache: Option<String>,
 }
 
-/// Ab so viel Ton wird bei „automatisch“ die Sprache bestimmt; unsicher → später
-/// noch einmal mit mehr Ton, höchstens so oft
-const SPRACHE_AB_S: usize = 2;
-const SPRACHE_VERSUCHE: usize = 3;
+/// Ab so viel Ton wird bei „automatisch“ einmal die Sprache bestimmt (Deutsch oder Englisch)
+const SPRACHE_AB_S: usize = 3;
 
 pub struct Mitlauf {
     stopp: Arc<AtomicBool>,
@@ -68,18 +66,16 @@ impl Mitlauf {
         let halt = stopp.clone();
         let faden = std::thread::spawn(move || {
             let mut vorab = Vorab::default();
-            let mut versuche = 0;
             let noetig = (STUECK_S + SUCHFENSTER_S) * RATE as usize;
             while !halt.load(Ordering::SeqCst) {
                 std::thread::sleep(TAKT);
                 if halt.load(Ordering::SeqCst) || !erkenner.bereit() {
                     continue;
                 }
-                if sprache == "auto" && vorab.sprache.is_none() && versuche < SPRACHE_VERSUCHE {
+                if sprache == "auto" && vorab.sprache.is_none() {
                     let bisher = lesen_ab(&pfad, 0);
-                    if bisher.len() >= SPRACHE_AB_S * (versuche + 1) * RATE as usize {
-                        versuche += 1;
-                        vorab.sprache = erkenner.sprache_erkennen(&bisher);
+                    if bisher.len() >= SPRACHE_AB_S * RATE as usize {
+                        vorab.sprache = Some(erkenner.sprache_erkennen(&bisher).unwrap_or_else(|| "de".into()));
                     }
                 }
                 let sprache = vorab.sprache.as_deref().unwrap_or(&sprache);

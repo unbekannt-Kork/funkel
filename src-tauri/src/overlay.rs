@@ -91,8 +91,6 @@ pub fn senden(app: &AppHandle, feld: &str, zustand: impl Fn(bool) -> Value) {
         let mut wert = zustand(name == feld && mit_feld);
         if let Some(objekt) = wert.as_object_mut() {
             objekt.insert("rand".into(), Value::Bool(mit_rand));
-            // Der Ton kommt aus dem Fenster des Feldes, auch wenn das Feld verborgen ist
-            objekt.insert("hier".into(), Value::Bool(name == feld));
         }
         let _ = app.emit_to(name.as_str(), "zustand", wert);
     }

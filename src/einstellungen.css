@@ -1,74 +1,99 @@
-/* Aufbau wie die macOS-Systemeinstellungen: Gruppentitel über der Karte,
-   gleich hohe Zeilen, Bedienelemente rechtsbündig in einer Breite. */
+/* Einstellungen im Theo-Fundament (tools/bausteine/fundament.css, Stand 14.11.2026):
+   Systemschrift, Leiter 13/14/20 px, Gewichte 400/500/600, Karten eckig mit
+   Haarlinie, Knopf und Feld 32 px hoch mit Radius 4, Bewegung 120 ms.
+   Der Schalter ist der gemeinsame Theo-Kippschalter (kippschalter.css, wortgleich). */
 :root {
   color-scheme: light dark;
-  --grund: #f2f2f5;
-  --flaeche: #fff;
-  --linie: rgb(0 0 0 / 0.08);
-  --text: #18181b;
-  --leise: #6e6e78;
-  --akzent: #5e5ab9;
-  --gut: #2f9e64;
-  --fehlt: #d4473d;
-  --feld: rgb(0 0 0 / 0.05);
+  --color-grund: #ffffff;
+  --color-flaeche: #ffffff;
+  --color-flaeche-still: #f5f5f3;
+  --color-flaeche-aktiv: #f3f3f0;
+  --color-rahmen: #cbcbce;
+  --color-rahmen-stark: #86868d;
+  --color-rahmen-tief: #6a6969;
+  --color-text: #17171a;
+  --color-text-zweit: #4a4a50;
+  --color-text-still: #6a6969;
+  --color-text-hell: #ffffff;
+  --color-akzent: #4a45b0;
+  --color-erfolg: #277850;
+  --color-fehler: #bf3c26;
+  --radius-klein: 4px;
+  --kurve: cubic-bezier(0.22, 1, 0.36, 1);
   --rand: 16px; /* Innenabstand der Karte */
-  --breite: 156px; /* gemeinsame Breite der Auswahlfelder */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
-  font-size: 13px;
-  line-height: 1.35;
+  --breite: 176px; /* gemeinsame Breite der Auswahlfelder */
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --grund: #1c1c1e;
-    --flaeche: #2a2a2d;
-    --linie: rgb(255 255 255 / 0.08);
-    --text: #f2f2f4;
-    --leise: #9d9da8;
-    --akzent: #9692f0;
-    --feld: rgb(255 255 255 / 0.07);
+    --color-grund: #0a0a0c;
+    --color-flaeche: #111114;
+    --color-flaeche-still: #0e0e11;
+    --color-flaeche-aktiv: #1f1f22;
+    --color-rahmen: #37373b;
+    --color-rahmen-stark: #6f6f76;
+    --color-rahmen-tief: #7e7e84;
+    --color-text: #f5f5f7;
+    --color-text-zweit: #aaaaac;
+    --color-text-still: #8b8b8d;
+    --color-text-hell: #ffffff;
+    --color-akzent: #5e5ab9;
+    --color-erfolg: #3fbf7f;
+    --color-fehler: #e8887a;
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 20px 20px 28px; background: var(--grund); color: var(--text); }
+body { margin: 0; padding: 20px 20px 28px; background: var(--color-grund); color: var(--color-text); }
 
-header { display: flex; align-items: center; gap: 14px; margin: 4px 4px 22px; }
+header { display: flex; align-items: center; gap: 14px; margin: 0 0 24px; }
 header img { flex: none; }
-header h1 { margin: 0 0 2px; font-size: 20px; font-weight: 650; }
+header h1 { margin: 0 0 2px; font-size: 20px; font-weight: 600; }
 header p { margin: 0; }
 
 section + section { margin-top: 20px; }
-h2 { margin: 0 var(--rand) 6px; font-size: 12px; font-weight: 600; color: var(--leise); }
-.karte { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 10px; padding: 0 var(--rand); }
+/* Rubrik: 13 px, Versalien, gesperrt */
+h2 { margin: 0 0 6px; font-size: 13px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-zweit); }
+.karte { background: var(--color-flaeche); border: 1px solid var(--color-rahmen); padding: 0 var(--rand); }
 .karte + .karte { margin-top: 10px; }
 
-.leise { color: var(--leise); }
-.zeile { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; margin: 0; border-top: 1px solid var(--linie); }
+.leise { color: var(--color-text-zweit); font-size: 13px; }
+.zeile { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 10px 0; margin: 0; border-top: 1px solid var(--color-rahmen); }
 .karte > .zeile:first-child, .karte > div:first-child > .zeile:first-child { border-top: 0; }
 .zeile.spalte { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 0 14px; }
 .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.text strong { font-weight: 550; }
-.marke { width: 8px; height: 8px; border-radius: 4px; background: var(--fehlt); flex: none; }
-.marke.gut { background: var(--gut); }
+.text strong { font-weight: 500; }
+/* Statuspunkt: einer der wenigen echten Kreise */
+.marke { width: 8px; height: 8px; border-radius: 50%; background: var(--color-fehler); flex: none; }
+.marke.gut { background: var(--color-erfolg); }
 
-button { font: inherit; padding: 5px 12px; border-radius: 7px; border: 0; background: var(--akzent); color: #fff; cursor: pointer; flex: none; }
-button.leicht { background: var(--feld); color: var(--text); }
+button {
+  font: inherit; font-weight: 500; min-height: 32px; padding: 0 12px; flex: none; cursor: pointer;
+  border-radius: var(--radius-klein); border: 1px solid var(--color-akzent); background: var(--color-akzent); color: var(--color-text-hell);
+  transition: background-color 120ms var(--kurve);
+}
+button.leicht, .eintrag button {
+  background: var(--color-flaeche); color: var(--color-text);
+  border-color: var(--color-rahmen-stark); border-bottom-color: var(--color-rahmen-tief);
+}
+button.leicht:hover, .eintrag button:hover { background: var(--color-flaeche-aktiv); }
 button:disabled { opacity: 0.5; cursor: default; }
-kbd { font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 28px; text-align: center; padding: 3px 8px; border-radius: 6px; background: var(--feld); }
-select { font: inherit; width: var(--breite); flex: none; padding: 5px 8px; border-radius: 7px; border: 1px solid var(--linie); background: var(--feld); color: var(--text); }
-textarea { font: inherit; width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--linie); background: var(--feld); color: var(--text); resize: vertical; }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--color-akzent); outline-offset: 2px; }
+kbd { font: 500 13px ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace; min-width: 32px; text-align: center; padding: 5px 8px; border-radius: var(--radius-klein); border: 1px solid var(--color-rahmen-stark); background: var(--color-flaeche-still); }
+select, textarea {
+  font: inherit; color: var(--color-text); background: var(--color-flaeche);
+  border: 1px solid var(--color-rahmen-stark); border-bottom: 2px solid var(--color-rahmen-tief); border-radius: var(--radius-klein);
+}
+select { width: var(--breite); flex: none; min-height: 32px; padding: 4px 10px; }
+textarea { width: 100%; padding: 6px 10px; resize: vertical; font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace; font-size: 13px; }
 
-/* Schalter statt Häkchen */
-input.schalter { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 38px; height: 22px; margin: 0; border-radius: 11px; background: rgb(120 120 128 / 0.32); cursor: pointer; transition: background 0.2s; }
-input.schalter::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 9px; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 0.2s; }
-input.schalter:checked { background: var(--gut); }
-input.schalter:checked::after { transform: translateX(16px); }
-
-.fortschritt { height: 4px; border-radius: 2px; background: var(--linie); margin-top: 6px; overflow: hidden; }
-#modell-balken, #sprachmodell-balken { height: 100%; width: 0; background: var(--akzent); transition: width 0.2s linear; }
+/* Laden: schmaler Balken, der den echten Fortschritt zeigt */
+.fortschritt { height: 4px; background: var(--color-flaeche-aktiv); margin-top: 6px; overflow: hidden; }
+#modell-balken, #sprachmodell-balken { height: 100%; width: 0; background: var(--color-akzent); transition: width 120ms linear; }
 
 /* Verlauf: Zeit links, Text in der Mitte, Knopf rechts */
-.eintrag { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--linie); }
+.eintrag { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--color-rahmen); }
 #verlauf .eintrag:first-child, #liegen .eintrag:first-child { border-top: 0; }
-.eintrag .wann { flex: none; width: 88px; color: var(--leise); font-variant-numeric: tabular-nums; }
+.eintrag .wann { flex: none; width: 96px; color: var(--color-text-zweit); font: 13px ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; padding-top: 1px; }
 .eintrag .inhalt { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.eintrag button { padding: 4px 10px; background: var(--feld); color: var(--text); }
