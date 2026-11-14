@@ -94,7 +94,7 @@ impl Erkenner {
         Ok((aufraeumen(&text), abschnitte))
     }
 
-    /// Deutsch oder Englisch, je nachdem, was wahrscheinlicher ist. Kostet einen eigenen Durchgang —
+    /// Deutsch oder Englisch, `None` = noch unsicher. Kostet einen eigenen Durchgang —
     /// deshalb während der Aufnahme: bei „automatisch“ verdoppelte er sonst nach dem
     /// Stopp die Wartezeit (gemessen 09.11.2026: 1,32–1,61 s statt 0,66–0,83 s).
     pub fn sprache_erkennen(&self, ton: &[f32]) -> Option<String> {
@@ -104,18 +104,26 @@ impl Erkenner {
         zustand.pcm_to_mel(ton, kerne).ok()?;
         let (_, wahrscheinlich) = zustand.lang_detect(0, kerne).ok()?;
         let p = |kuerzel: &str| whisper_rs::get_lang_id(kuerzel).and_then(|id| wahrscheinlich.get(id as usize).copied());
-        Some(haupt_sprache(p("de")?, p("en")?).to_string())
+        haupt_sprache(p("de")?, p("en")?).map(str::to_string)
     }
 }
 
 /// „Automatisch“ heißt Deutsch oder Englisch. Frei über alle Sprachen hielt Whisper
 /// deutsches Diktat für Russisch oder blieb unsicher und rechnete doppelt (Log bis
 /// 13.11.2026: 35-mal unentschieden, einmal Russisch). Andere Sprachen fest einstellen.
-fn haupt_sprache(deutsch: f32, englisch: f32) -> &'static str {
-    if englisch > deutsch {
-        "en"
+/// Englisch nur, wenn klar (14.11.2026: nach 3 s fast stiller Luft gewann Englisch
+/// knapp, das deutsche Diktat kam als Englisch). Sonst Deutsch, wenn deutlich; sonst
+/// unsicher — dann mit mehr Ton noch einmal, am Ende gilt Deutsch.
+const ENGLISCH_AB: f32 = 0.6;
+const DEUTSCH_AB: f32 = 0.4;
+
+fn haupt_sprache(deutsch: f32, englisch: f32) -> Option<&'static str> {
+    if englisch >= ENGLISCH_AB && englisch > deutsch {
+        Some("en")
+    } else if deutsch >= DEUTSCH_AB && deutsch >= englisch {
+        Some("de")
     } else {
-        "de"
+        None
     }
 }
 
@@ -279,9 +287,16 @@ mod tests {
 
     #[test]
     fn automatisch_ist_deutsch_oder_englisch() {
-        assert_eq!(haupt_sprache(0.3, 0.1), "de");
-        assert_eq!(haupt_sprache(0.1, 0.6), "en");
-        assert_eq!(haupt_sprache(0.0, 0.0), "de", "unentschieden bleibt Deutsch");
+        assert_eq!(haupt_sprache(0.9, 0.05), Some("de"));
+        assert_eq!(haupt_sprache(0.1, 0.8), Some("en"));
+    }
+
+    #[test]
+    fn knappes_englisch_ist_unsicher() {
+        // Stille Luft am Anfang: beide klein, Englisch knapp vorn
+        assert_eq!(haupt_sprache(0.2, 0.3), None);
+        assert_eq!(haupt_sprache(0.35, 0.55), None);
+        assert_eq!(haupt_sprache(0.0, 0.0), None);
     }
 
     #[test]
@@ -340,6 +355,18 @@ mod mit_modell {
         let beginn = std::time::Instant::now();
         let (text, _) = e.erkennen(&ton, &sprache, "").unwrap();
         println!("{:.1} s Ton mit fester Sprache in {:.2} s: {text}", ton.len() as f32 / 16000.0, beginn.elapsed().as_secs_f32());
+    }
+
+    /// Leise Luft am Anfang darf nicht als Englisch gelten (14.11.2026)
+    #[test]
+    #[ignore]
+    fn leise_luft_ist_kein_englisch() {
+        let e = Erkenner::neu();
+        e.laden(&crate::modell::pfad()).unwrap();
+        let luft: Vec<f32> = (0..3 * 16000).map(|i| ((i * 7919 % 1000) as f32 / 1000.0 - 0.5) * 0.002).collect();
+        let sprache = e.sprache_erkennen(&luft);
+        println!("3 s leise Luft: {sprache:?}");
+        assert_ne!(sprache.as_deref(), Some("en"));
     }
 
     /// Erfundenes Gespräch mit zwei Systemstimmen: `FUNKEL_GESPRAECH=datei.wav … -- --ignored protokoll`
