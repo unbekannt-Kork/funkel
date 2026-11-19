@@ -57,6 +57,7 @@ impl Erkenner {
         ton: &[f32],
         sprache: &str,
         vorlage: &str,
+        rueckfall: bool,
     ) -> Result<(String, Vec<Abschnitt>), String> {
         let wache = self.kontext.lock().unwrap();
         let kontext = wache.as_ref().ok_or("Sprachmodell fehlt")?;
@@ -67,10 +68,12 @@ impl Erkenner {
         p.set_language(Some(sprache));
         p.set_translate(false);
         p.set_no_context(true);
-        // Kein Temperatur-Rückfall: bei unsicherem Ergebnis rechnete Whisper bis zu
-        // fünfmal neu. Das waren die Spitzen von 3–8 s nach dem Stopp (Log bis
-        // 13.11.2026: 3,8 s Rest in 6,5 s, 18 s Rest in 8,0 s statt etwa 1 s).
-        p.set_temperature_inc(0.0);
+        // Temperatur-Rückfall: bei unsicherem Ergebnis oder Schleife rechnet Whisper
+        // neu, bis zu fünfmal. Nach dem Stopp kostete das 3–8 s (Log bis 13.11.2026:
+        // 3,8 s Rest in 6,5 s, 18 s Rest in 8,0 s statt etwa 1 s) — dort aus. Ganz
+        // aus kamen Schleifen in jedem vierten Diktat (14.–19.11.2026); während der
+        // Aufnahme kostet er keine Wartezeit, deshalb dort an.
+        p.set_temperature_inc(if rueckfall { 0.2 } else { 0.0 });
         p.set_suppress_blank(true);
         p.set_print_special(false);
         p.set_print_progress(false);
@@ -89,7 +92,7 @@ impl Erkenner {
             let von = zustand.full_get_segment_t0(i).unwrap_or(0) as f32 / 100.0;
             let bis = zustand.full_get_segment_t1(i).unwrap_or(0) as f32 / 100.0;
             text.push_str(&stueck);
-            abschnitte.push(Abschnitt { von, bis, text: stueck.trim().to_string() });
+            abschnitte.push(Abschnitt { von, bis, text: schleifen_kuerzen(&stueck.split_whitespace().collect::<Vec<_>>()) });
         }
         Ok((aufraeumen(&text), abschnitte))
     }
@@ -219,9 +222,47 @@ pub fn nachlauf_streichen(abschnitte: Vec<Abschnitt>, ton: &[f32], rate: usize) 
     abschnitte.into_iter().take(behalten).collect()
 }
 
-/// Leerraum glätten und erfundene Sätze verwerfen.
+/// Ab so vielen gleichen Wortgruppen hintereinander ist es eine Schleife von
+/// Whisper, kein Gesprochenes („ja, ja, ja“ bleibt).
+const SCHLEIFE_AB: usize = 4;
+const SCHLEIFE_WOERTER: usize = 6;
+
+/// Kürzt Wiederholschleifen auf eine Wortgruppe; das Satzzeichen der letzten bleibt.
+/// Whisper hängt sich an Füllwörtern auf (19.11.2026: 43-mal „ähm, ja“, seit 14.11.
+/// in jedem vierten Diktat eine Schleife).
+fn schleifen_kuerzen(woerter: &[&str]) -> String {
+    let schluessel: Vec<String> = woerter.iter().map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()).collect();
+    let ohne_schluss = |w: &str| w.trim_end_matches(|c: char| !c.is_alphanumeric()).len();
+    let mut aus: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < woerter.len() {
+        let schleife = (1..=SCHLEIFE_WOERTER).filter(|&n| i + n <= woerter.len()).find_map(|n| {
+            let gruppe = &schluessel[i..i + n];
+            if gruppe.iter().all(String::is_empty) {
+                return None;
+            }
+            let mal = (1..).take_while(|k| schluessel.get(i + k * n..i + (k + 1) * n) == Some(gruppe)).count() + 1;
+            (mal >= SCHLEIFE_AB).then_some((n, mal))
+        });
+        match schleife {
+            Some((n, mal)) => {
+                aus.extend(woerter[i..i + n - 1].iter().map(|w| w.to_string()));
+                let (erstes, letztes) = (woerter[i + n - 1], woerter[i + mal * n - 1]);
+                aus.push(format!("{}{}", &erstes[..ohne_schluss(erstes)], &letztes[ohne_schluss(letztes)..]));
+                i += mal * n;
+            }
+            None => {
+                aus.push(woerter[i].to_string());
+                i += 1;
+            }
+        }
+    }
+    aus.join(" ")
+}
+
+/// Leerraum glätten, Wiederholschleifen kürzen und erfundene Sätze verwerfen.
 pub fn aufraeumen(text: &str) -> String {
-    let glatt = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let glatt = schleifen_kuerzen(&text.split_whitespace().collect::<Vec<_>>());
     let klein = glatt.to_lowercase();
     let ohne_zeichen: String = klein.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '.').collect();
     if ERFUNDEN.iter().any(|e| ohne_zeichen.trim().starts_with(e)) && glatt.len() < 80 {
@@ -311,6 +352,20 @@ mod tests {
     }
 
     #[test]
+    fn wiederholschleife_wird_gekuerzt() {
+        // 19.11.2026: 43-mal „ähm, ja“ hintereinander, gesagt waren zwei
+        let schleife = "ähm, ja, ".repeat(43);
+        assert_eq!(aufraeumen(&format!("Also, ja, {schleife}Ja, wie du siehst.")), "Also, ja, ähm, ja, Ja, wie du siehst.");
+        assert_eq!(aufraeumen("Tschüss, tschüss, tschüss, tschüss, tschüss."), "Tschüss.");
+    }
+
+    #[test]
+    fn gesprochene_wiederholung_bleibt() {
+        assert_eq!(aufraeumen("Ja, ja, ja, das passt."), "Ja, ja, ja, das passt.");
+        assert_eq!(aufraeumen("Eins, zwei, eins, zwei, drei."), "Eins, zwei, eins, zwei, drei.");
+    }
+
+    #[test]
     fn echter_text_bleibt() {
         assert_eq!(aufraeumen("Die Untertitel sind zu klein."), "Die Untertitel sind zu klein.");
     }
@@ -336,7 +391,7 @@ mod mit_modell {
         let e = Erkenner::neu();
         e.laden(&crate::modell::pfad()).unwrap();
         let beginn = std::time::Instant::now();
-        let (text, _) = e.erkennen(&ton, "de", "").unwrap();
+        let (text, _) = e.erkennen(&ton, "de", "", false).unwrap();
         println!("{:.1} s Ton in {:.1} s: {text}", ton.len() as f32 / 16000.0, beginn.elapsed().as_secs_f32());
         let klein = text.to_lowercase();
         assert!(klein.contains("funkel") || klein.contains("probediktat"), "{text}");
@@ -353,8 +408,28 @@ mod mit_modell {
         assert_eq!(e.sprache_erkennen(&ton[..ton.len().min(32000)]).as_deref(), Some(std::env::var("FUNKEL_SPRACHE").as_deref().unwrap_or("de")));
         let sprache = e.sprache_erkennen(&ton).unwrap();
         let beginn = std::time::Instant::now();
-        let (text, _) = e.erkennen(&ton, &sprache, "").unwrap();
+        let (text, _) = e.erkennen(&ton, &sprache, "", false).unwrap();
         println!("{:.1} s Ton mit fester Sprache in {:.2} s: {text}", ton.len() as f32 / 16000.0, beginn.elapsed().as_secs_f32());
+    }
+
+    /// Wie viel die Schleifenkürzung in echten Diktaten streicht, ohne Text auszugeben:
+    /// `FUNKEL_BESTAND=…/funkel/aufnahmen cargo test --release -- --ignored bestand --nocapture`
+    #[test]
+    #[ignore]
+    fn schleifen_im_bestand() {
+        let ordner = std::env::var("FUNKEL_BESTAND").unwrap();
+        let (mut alle, mut gekuerzt, mut woerter) = (0, 0, 0);
+        for f in std::fs::read_dir(ordner).unwrap().flatten() {
+            let n = f.file_name().to_string_lossy().to_string();
+            if !n.ends_with(".roh.txt") { continue; }
+            let t = std::fs::read_to_string(f.path()).unwrap();
+            let vorher: Vec<&str> = t.split_whitespace().collect();
+            let nachher = schleifen_kuerzen(&vorher);
+            alle += 1;
+            let weg = vorher.len() - nachher.split_whitespace().count();
+            if weg > 0 { gekuerzt += 1; woerter += weg; eprintln!("GEKUERZT {n}: {weg} Woerter"); }
+        }
+        eprintln!("BESTAND {alle} Diktate, {gekuerzt} gekuerzt, {woerter} Woerter entfernt");
     }
 
     /// Leise Luft am Anfang darf nicht als Englisch gelten (14.11.2026)
@@ -377,7 +452,7 @@ mod mit_modell {
         let ton = wav_lesen(pfad.to_str().unwrap());
         let e = Erkenner::neu();
         e.laden(&crate::modell::pfad()).unwrap();
-        let (_, abschnitte) = e.erkennen(&ton, "de", "").unwrap();
+        let (_, abschnitte) = e.erkennen(&ton, "de", "", false).unwrap();
         let beginn = std::time::Instant::now();
         let sprecher = crate::helfer::sprecher(&pfad, 0).expect("Sprechertrennung");
         let zahl = sprecher.iter().map(|s| s.2).collect::<std::collections::HashSet<_>>().len();
