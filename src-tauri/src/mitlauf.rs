@@ -92,7 +92,7 @@ impl Mitlauf {
                 }
                 let schnitt = leiseste_stelle(&neu, STUECK_S * RATE as usize, noetig);
                 let versatz = vorab.fertig_bis as f32 / RATE as f32;
-                match erkenner.erkennen(&neu[..schnitt], sprache, &crate::einstellungen::vorlage(sprache)) {
+                match erkenner.erkennen(&neu[..schnitt], sprache, &crate::einstellungen::vorlage(sprache), true) {
                     Ok((_, abschnitte)) => {
                         vorab.abschnitte.extend(abschnitte.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
                         vorab.fertig_bis += schnitt;
@@ -140,7 +140,7 @@ mod tests {
         let vorlage = crate::einstellungen::vorlage("de");
         // Ganz am Stück, zum Vergleich
         let t = std::time::Instant::now();
-        let (ganz, _) = e.erkennen(&ton, "de", &vorlage).unwrap();
+        let (ganz, _) = e.erkennen(&ton, "de", &vorlage, false).unwrap();
         let dauer_ganz = t.elapsed().as_secs_f32();
         // Wachsende Datei, etwa 4-mal so schnell wie Sprechen
         let ziel = std::env::temp_dir().join(format!("funkel-mitlauf-{}.wav", std::process::id()));
@@ -154,7 +154,7 @@ mod tests {
         let vorab = m.stoppen();
         let rest_ab = vorab.fertig_bis.min(ton.len());
         let versatz = rest_ab as f32 / RATE as f32;
-        let (_, rest) = e.erkennen(&ton[rest_ab..], "de", &vorlage).unwrap();
+        let (_, rest) = e.erkennen(&ton[rest_ab..], "de", &vorlage, false).unwrap();
         let mut alle = vorab.abschnitte;
         alle.extend(rest.into_iter().map(|a| Abschnitt { von: a.von + versatz, bis: a.bis + versatz, text: a.text }));
         let dauer_rest = t.elapsed().as_secs_f32();

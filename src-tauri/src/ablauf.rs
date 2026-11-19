@@ -197,7 +197,7 @@ impl Ablauf {
         // Weniger als 0,3 s Sprache im Rest: nichts mehr zu erkennen, nur das Vorab zählt
         let rest_erkennen = rest_bis.saturating_sub(rest_ab) >= aufnahme::RATE as usize * 3 / 10;
         let rest_ergebnis = if rest_erkennen {
-            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &sprache, &einstellungen::vorlage(&sprache))
+            self.erkenner.erkennen(&ton[rest_ab..rest_bis], &sprache, &einstellungen::vorlage(&sprache), false)
         } else {
             Ok((String::new(), Vec::new()))
         };
